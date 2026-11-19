@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ClipboardCheck,
   Building2,
@@ -8,18 +8,47 @@ import {
   ArrowRight,
   FileText,
   FileBarChart2,
-  AlertOctagon
+  AlertOctagon,
+  CheckCircle2,
+  Award,
+  X
 } from 'lucide-react';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 
 export default function DashboardOverview({
   orders = [],
   reports = [],
+  units = [],
   userProfile,
   onOpenOrder,
   onNewOrder,
-  onNavigateTab
+  onNavigateTab,
+  onOpenProfile
 }) {
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    try {
+      return localStorage.getItem('kivo_onboarding_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const hasProfileConfigured = Boolean(
+    userProfile?.registry && userProfile.registry !== 'RT Habilitado'
+  );
+  const hasUnitsConfigured = units.length > 0;
+  const hasOrdersCreated = orders.length > 0;
+  const allStepsDone = hasProfileConfigured && hasUnitsConfigured && hasOrdersCreated;
+  const showOnboarding = !onboardingDismissed && !allStepsDone;
+
+  const dismissOnboarding = () => {
+    setOnboardingDismissed(true);
+    try {
+      localStorage.setItem('kivo_onboarding_dismissed', '1');
+    } catch {
+      // ignora
+    }
+  };
   const activeOrdersCount = orders.filter((o) => o.status === 'open' || o.status === 'in_progress').length;
   const completedOrdersCount = orders.filter((o) => o.status === 'completed').length;
 
@@ -72,6 +101,98 @@ export default function DashboardOverview({
           </button>
         </div>
       </div>
+
+      {/* Onboarding Rápido (Fluxo inicial de conta + unidades + 1ª vistoria) */}
+      {showOnboarding && (
+        <div className="bg-[#141518] border border-[#2EB88A]/30 rounded-xl p-4 sm:p-5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[#F4F4F5]">
+                Primeiros passos no Kivo
+              </h2>
+              <p className="text-[11px] text-[#71717A] mt-0.5">
+                Configure seu registro RT e cadastre suas unidades para agilizar as auditorias em campo.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissOnboarding}
+              className="p-1 text-[#71717A] hover:text-[#F4F4F5] rounded"
+              title="Ocultar guia"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+            <button
+              type="button"
+              onClick={() => onOpenProfile?.()}
+              className={`text-left p-3 rounded-lg border transition flex items-center gap-3 ${
+                hasProfileConfigured
+                  ? 'bg-[#122620]/60 border-[#2EB88A]/40 text-[#34D399]'
+                  : 'bg-[#0D0E10] border-[#232429] hover:border-[#32343C] text-[#F4F4F5]'
+              }`}
+            >
+              {hasProfileConfigured ? (
+                <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+              ) : (
+                <Award className="w-4 h-4 text-[#34D399] shrink-0" />
+              )}
+              <div className="min-w-0">
+                <span className="font-semibold block truncate">1. Perfil & Conselho RT</span>
+                <span className="text-[10px] text-[#71717A] block truncate">
+                  {hasProfileConfigured ? userProfile.registry : 'Definir CRQ / CREA'}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('units')}
+              className={`text-left p-3 rounded-lg border transition flex items-center gap-3 ${
+                hasUnitsConfigured
+                  ? 'bg-[#122620]/60 border-[#2EB88A]/40 text-[#34D399]'
+                  : 'bg-[#0D0E10] border-[#232429] hover:border-[#32343C] text-[#F4F4F5]'
+              }`}
+            >
+              {hasUnitsConfigured ? (
+                <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+              ) : (
+                <Building2 className="w-4 h-4 text-[#34D399] shrink-0" />
+              )}
+              <div className="min-w-0">
+                <span className="font-semibold block truncate">2. Clientes & Unidades</span>
+                <span className="text-[10px] text-[#71717A] block truncate">
+                  {hasUnitsConfigured ? `${units.length} unidade(s) ativa(s)` : 'Cadastrar 1ª unidade'}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={onNewOrder}
+              className={`text-left p-3 rounded-lg border transition flex items-center gap-3 ${
+                hasOrdersCreated
+                  ? 'bg-[#122620]/60 border-[#2EB88A]/40 text-[#34D399]'
+                  : 'bg-[#0D0E10] border-[#232429] hover:border-[#32343C] text-[#F4F4F5]'
+              }`}
+            >
+              {hasOrdersCreated ? (
+                <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+              ) : (
+                <Plus className="w-4 h-4 text-[#34D399] shrink-0" />
+              )}
+              <div className="min-w-0">
+                <span className="font-semibold block truncate">3. Iniciar 1ª Vistoria</span>
+                <span className="text-[10px] text-[#71717A] block truncate">
+                  {hasOrdersCreated ? `${orders.length} vistoria(s) iniciada(s)` : 'Abrir checklist de campo'}
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* KPI Metrics (100% dados reais do Supabase) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

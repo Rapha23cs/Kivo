@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   ClipboardList,
   FileBarChart2,
+  Building2,
   Activity,
   Award,
   LogOut,
@@ -14,6 +15,7 @@ export default function Sidebar({
   onSelectTab,
   openOrdersCount = 0,
   reportsCount = 0,
+  unitsCount = 0,
   userProfile,
   onSignOut,
   isOpen = false,
@@ -43,9 +45,17 @@ export default function Sidebar({
       badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]'
     },
     {
+      id: 'units',
+      label: 'Clientes & Unidades',
+      shortLabel: 'Unidades',
+      icon: Building2,
+      badge: unitsCount > 0 ? unitsCount : null,
+      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]'
+    },
+    {
       id: 'profile',
-      label: 'Meu Perfil RT',
-      shortLabel: 'Perfil',
+      label: 'Minha Conta & RT',
+      shortLabel: 'Conta',
       icon: Award
     }
   ];
@@ -196,7 +206,7 @@ export default function Sidebar({
         aria-label="Navegação rápida"
         className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-[#111214]/95 backdrop-blur-md border-t border-[#1F2024] pb-safe"
       >
-        <div className="grid grid-cols-4 gap-1 px-2 pt-1.5 pb-1">
+        <div className="grid grid-cols-5 gap-1 px-1.5 pt-1.5 pb-1">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;

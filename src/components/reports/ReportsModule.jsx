@@ -22,6 +22,7 @@ import { ReportService } from '../../supabase/reportService';
 export default function ReportsModule({
   reports,
   orders,
+  units = [],
   hospitals,
   userProfile,
   onSaveReport,
@@ -350,6 +351,7 @@ export default function ReportsModule({
           report={editingReport}
           isOpen={Boolean(editingReport)}
           linkedOrder={findLinkedOrder(editingReport)}
+          units={units}
           userProfile={userProfile}
           onClose={() => setEditingReport(null)}
           onLocalDraftUpdate={onLocalDraftUpdate}

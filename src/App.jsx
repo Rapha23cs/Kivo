@@ -8,6 +8,7 @@ import NewWorkOrderModal from './components/workOrders/NewWorkOrderModal';
 import UserProfileModal from './components/profile/UserProfileModal';
 import LoginScreen from './components/auth/LoginScreen';
 import ReportsModule from './components/reports/ReportsModule';
+import UnitsModule from './components/units/UnitsModule';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase/supabaseConfig';
 import { DataService } from './supabase/dataService';
 import { ReportService } from './supabase/reportService';
@@ -25,10 +26,12 @@ export default function App() {
   const [orders, setOrders] = useState([]);
   const [reports, setReports] = useState([]);
   const [clients, setClients] = useState([]);
+  const [units, setUnits] = useState([]);
 
   const [selectedClient, setSelectedClient] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pendingReportToOpen, setPendingReportToOpen] = useState(null);
+  const [preselectedUnitForNewOrder, setPreselectedUnitForNewOrder] = useState(null);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -43,6 +46,8 @@ export default function App() {
       const result = await SyncEngine.flushQueue();
       setOrders(result.orders);
       setReports(result.reports);
+      if (result.clients) setClients(result.clients);
+      if (result.units) setUnits(result.units);
       setUserProfile(result.profile);
       setPendingSyncCount(result.pendingCount);
     } finally {
@@ -60,6 +65,7 @@ export default function App() {
     setOrders(DataService.getOrders());
     setReports(ReportService.getReports());
     setClients(DataService.getClients());
+    setUnits(DataService.getUnits());
 
     if (supabaseEnabled && navigator.onLine !== false) {
       if (OfflineStore.getPendingCount() > 0) {
@@ -70,6 +76,7 @@ export default function App() {
         const remote = await DataService.loadFromSupabase();
         if (remote?.orders) setOrders(remote.orders);
         if (remote?.clients) setClients(remote.clients);
+        if (remote?.units) setUnits(remote.units);
       } catch (err) {
         console.warn('Falha ao carregar inspeções do Supabase:', err.message);
       }
@@ -158,6 +165,7 @@ export default function App() {
     setOrders([]);
     setReports([]);
     setClients([]);
+    setUnits([]);
     setUserProfile(null);
     setSelectedOrder(null);
   };
@@ -167,13 +175,43 @@ export default function App() {
     setUserProfile(saved);
   };
 
+  const handleSaveUnit = async (unitData) => {
+    const nextUnits = await DataService.saveUnit(unitData);
+    setUnits(nextUnits);
+    setClients(DataService.getClients());
+    return nextUnits;
+  };
+
+  const handleDeleteUnit = async (unit) => {
+    const nextUnits = await DataService.deleteUnit(unit);
+    setUnits(nextUnits);
+  };
+
+  const handleSaveClient = async (clientData) => {
+    const nextClients = await DataService.saveClient(clientData);
+    setClients(nextClients);
+    return nextClients;
+  };
+
+  const handleDeleteClient = async (clientRow) => {
+    const nextClients = await DataService.deleteClient(clientRow);
+    setClients(nextClients);
+  };
+
+  const handleImportUnitsFromOrders = async () => {
+    const nextUnits = await DataService.importUnitsFromOrders(orders);
+    setUnits(nextUnits);
+    setClients(DataService.getClients());
+  };
+
   const clientNames = useMemo(() => {
     const names = new Set();
     clients.forEach((c) => c?.nome && names.add(c.nome));
+    units.forEach((u) => u?.clienteNome && names.add(u.clienteNome));
     orders.forEach((o) => o?.clientName && names.add(o.clientName));
     reports.forEach((r) => r?.clienteNome && names.add(r.clienteNome));
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [clients, orders, reports]);
+  }, [clients, units, orders, reports]);
 
   if (supabaseEnabled && !authChecked) {
     return (
@@ -217,6 +255,11 @@ export default function App() {
     selectedClient === 'all'
       ? reports
       : reports.filter((r) => r.clienteNome === selectedClient);
+
+  const displayedUnits =
+    selectedClient === 'all'
+      ? units
+      : units.filter((u) => u.clienteNome === selectedClient);
 
   const handleUpdateOrder = (updatedOrder) => {
     const updatedList = DataService.saveOrder(updatedOrder, (syncedId, patchedOrders) => {
@@ -279,6 +322,7 @@ export default function App() {
         }}
         openOrdersCount={openOrdersCount}
         reportsCount={reports.length}
+        unitsCount={units.length}
         userProfile={userProfile}
         onSignOut={supabaseEnabled ? handleSignOut : null}
         isOpen={isMobileMenuOpen}
@@ -306,10 +350,15 @@ export default function App() {
               <DashboardOverview
                 orders={displayedOrders}
                 reports={displayedReports}
+                units={displayedUnits}
                 userProfile={userProfile}
                 onOpenOrder={(order) => setSelectedOrder(order)}
-                onNewOrder={() => setIsNewOrderModalOpen(true)}
+                onNewOrder={() => {
+                  setPreselectedUnitForNewOrder(null);
+                  setIsNewOrderModalOpen(true);
+                }}
                 onNavigateTab={setActiveTab}
+                onOpenProfile={() => setIsProfileModalOpen(true)}
               />
             )}
 
@@ -317,8 +366,31 @@ export default function App() {
               <WorkOrderList
                 orders={displayedOrders}
                 onOpenOrder={(order) => setSelectedOrder(order)}
-                onNewOrder={() => setIsNewOrderModalOpen(true)}
+                onNewOrder={() => {
+                  setPreselectedUnitForNewOrder(null);
+                  setIsNewOrderModalOpen(true);
+                }}
                 onDeleteOrder={handleDeleteOrder}
+              />
+            )}
+
+            {activeTab === 'units' && (
+              <UnitsModule
+                units={displayedUnits}
+                clients={clients}
+                orders={displayedOrders}
+                reports={displayedReports}
+                onSaveUnit={handleSaveUnit}
+                onDeleteUnit={handleDeleteUnit}
+                onSaveClient={handleSaveClient}
+                onDeleteClient={handleDeleteClient}
+                onImportUnitsFromOrders={handleImportUnitsFromOrders}
+                onNewOrderForUnit={(unit) => {
+                  setPreselectedUnitForNewOrder(unit);
+                  setIsNewOrderModalOpen(true);
+                }}
+                onOpenOrder={(order) => setSelectedOrder(order)}
+                onNavigateTab={setActiveTab}
               />
             )}
 
@@ -326,6 +398,7 @@ export default function App() {
               <ReportsModule
                 reports={displayedReports}
                 orders={displayedOrders}
+                units={displayedUnits}
                 hospitals={clients.map((c) => ({ clientName: c.nome, name: '' }))}
                 userProfile={userProfile}
                 initialEditingReport={pendingReportToOpen}
@@ -365,9 +438,15 @@ export default function App() {
       {isNewOrderModalOpen && (
         <NewWorkOrderModal
           isOpen={isNewOrderModalOpen}
-          onClose={() => setIsNewOrderModalOpen(false)}
+          onClose={() => {
+            setIsNewOrderModalOpen(false);
+            setPreselectedUnitForNewOrder(null);
+          }}
           onCreateOrder={handleCreateOrder}
+          onSaveUnit={handleSaveUnit}
           clients={clients}
+          units={units}
+          initialUnit={preselectedUnitForNewOrder}
           userProfile={userProfile}
         />
       )}
@@ -378,6 +457,16 @@ export default function App() {
           onClose={() => setIsProfileModalOpen(false)}
           userProfile={userProfile}
           onSaveProfile={handleSaveProfile}
+          onSignOut={supabaseEnabled ? handleSignOut : null}
+          isOnline={isOnline}
+          pendingSyncCount={pendingSyncCount}
+          onSyncNow={handleSyncNow}
+          stats={{
+            clients: clients.length,
+            units: units.length,
+            orders: orders.length,
+            reports: reports.length
+          }}
         />
       )}
     </div>

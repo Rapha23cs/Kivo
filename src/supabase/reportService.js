@@ -12,7 +12,7 @@ import {
   createBlankReport
 } from '../data/reportTemplateData';
 import { calculateInspectionSummary } from '../data/emserhChecklistData';
-import { compressImageToDataUrl, uploadDataUrlToStorage } from './dataService';
+import { compressImageToDataUrl, uploadDataUrlToStorage, isUuid } from './dataService';
 import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
 
 const LS_REPORTS_KEY = 'kivo_environmental_reports';
@@ -166,6 +166,7 @@ export const ReportService = {
       regional: order.regional || '',
       tipoInspecao: order.inspectionType || 'Programada',
       responsavel: order.technicianName || userProfile?.name || 'Auditor Técnico',
+      unidadeId: order.unidadeId || null,
       inspecaoId: order.supabaseId || null,
       inspecaoCodigo: order.id || '',
       itensAvaliados: derived.summary.totalAvaliados,
@@ -262,6 +263,7 @@ export const ReportService = {
       regional: order.regional || existingReport.regional,
       tipoInspecao: order.inspectionType || existingReport.tipoInspecao,
       responsavel: order.technicianName || existingReport.responsavel || userProfile?.name || 'Auditor Técnico',
+      unidadeId: order.unidadeId || existingReport.unidadeId || null,
       inspecaoId: order.supabaseId || existingReport.inspecaoId || null,
       inspecaoCodigo: order.id || existingReport.inspecaoCodigo || '',
       itensAvaliados: derived.summary.totalAvaliados,
@@ -578,6 +580,7 @@ export const ReportService = {
         sinteseDesvios: row.sintese_desvios || '',
         conclusaoTexto: row.conclusao_texto || '',
         status: row.status || 'rascunho',
+        unidadeId: row.unidade_id || null,
         inspecaoId: row.inspecao_id || null,
         inspecaoCodigo: row.inspecoes?.codigo_kivo || '',
         desvios: (row.relatorio_desvios || [])
@@ -664,6 +667,7 @@ export const ReportService = {
       user_id: user.id,
       cliente_id: clienteId,
       inspecao_id: inspecaoId,
+      ...(isUuid(report.unidadeId) ? { unidade_id: report.unidadeId } : {}),
       codigo_relatorio: report.codigoRelatorio,
       cliente_nome: report.clienteNome || null,
       unidade: report.unidade || 'Unidade Atendida',
@@ -691,11 +695,22 @@ export const ReportService = {
       status: report.status === 'finalizado' ? 'finalizado' : 'rascunho'
     };
 
-    const { data: savedHeader, error: headerError } = await client
+    let { data: savedHeader, error: headerError } = await client
       .from('relatorios_inspecao')
       .upsert(headerPayload, { onConflict: 'codigo_relatorio' })
       .select('id')
       .single();
+
+    if (headerError && (headerError.code === 'PGRST204' || headerError.message?.includes('unidade_id'))) {
+      const { unidade_id: _ignored, ...fallbackHeader } = headerPayload;
+      const retry = await client
+        .from('relatorios_inspecao')
+        .upsert(fallbackHeader, { onConflict: 'codigo_relatorio' })
+        .select('id')
+        .single();
+      savedHeader = retry.data;
+      headerError = retry.error;
+    }
 
     if (headerError) {
       throw new Error(headerError.message);

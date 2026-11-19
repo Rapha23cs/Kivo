@@ -7,8 +7,13 @@ import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offli
 const LS_PROFILE_KEY = 'kivo_user_profile';
 const LS_ORDERS_KEY = 'kivo_work_orders';
 const LS_CLIENTS_KEY = 'kivo_clients_cache';
+const LS_UNITS_KEY = 'kivo_units_cache';
 const LS_CATALOG_ITEMS_KEY = 'kivo_supabase_catalog_items';
 const LS_ACTIVE_UID_KEY = 'kivo_active_supabase_uid';
+
+export function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
 
 const VALID_CLASSIFICATIONS = new Set(['Leve', 'Médio', 'Grave', 'Crítico']);
 
@@ -79,12 +84,25 @@ export async function uploadDataUrlToStorage(dataUrl, relativePath) {
 let ordersMemoryCache = null;
 let profileMemoryCache = null;
 let clientsMemoryCache = null;
+let unitsMemoryCache = null;
 let catalogMemoryCache = null;
 
 function persistOrdersCache(list) {
   ordersMemoryCache = list;
   safeLocalStorageSet(LS_ORDERS_KEY, JSON.stringify(list));
   OfflineStore.saveCache('orders', list);
+}
+
+function persistClientsCache(list) {
+  clientsMemoryCache = list;
+  safeLocalStorageSet(LS_CLIENTS_KEY, JSON.stringify(list));
+  OfflineStore.saveCache('clients', list);
+}
+
+function persistUnitsCache(list) {
+  unitsMemoryCache = list;
+  safeLocalStorageSet(LS_UNITS_KEY, JSON.stringify(list));
+  OfflineStore.saveCache('units', list);
 }
 
 function persistProfileCache(profile) {
@@ -95,9 +113,10 @@ function persistProfileCache(profile) {
 
 export const DataService = {
   async hydrateFromIndexedDb() {
-    const [ordersIdb, clientsIdb, catalogIdb, profileIdb] = await Promise.all([
+    const [ordersIdb, clientsIdb, unitsIdb, catalogIdb, profileIdb] = await Promise.all([
       OfflineStore.loadCache('orders', null),
       OfflineStore.loadCache('clients', null),
+      OfflineStore.loadCache('units', null),
       OfflineStore.loadCache('catalog', null),
       OfflineStore.loadCache('profile', null)
     ]);
@@ -109,6 +128,10 @@ export const DataService = {
     if (Array.isArray(clientsIdb) && (!clientsMemoryCache || clientsIdb.length >= clientsMemoryCache.length)) {
       clientsMemoryCache = clientsIdb;
       safeLocalStorageSet(LS_CLIENTS_KEY, JSON.stringify(clientsIdb));
+    }
+    if (Array.isArray(unitsIdb) && (!unitsMemoryCache || unitsIdb.length >= unitsMemoryCache.length)) {
+      unitsMemoryCache = unitsIdb;
+      safeLocalStorageSet(LS_UNITS_KEY, JSON.stringify(unitsIdb));
     }
     if (Array.isArray(catalogIdb) && catalogIdb.length > 0) {
       catalogMemoryCache = catalogIdb;
@@ -122,6 +145,7 @@ export const DataService = {
     return {
       orders: this.getOrders(),
       clients: this.getClients(),
+      units: this.getUnits(),
       profile: this.getUserProfile()
     };
   },
@@ -145,9 +169,11 @@ export const DataService = {
       ordersMemoryCache = null;
       profileMemoryCache = null;
       clientsMemoryCache = null;
+      unitsMemoryCache = null;
       localStorage.removeItem(LS_ACTIVE_UID_KEY);
       localStorage.removeItem(LS_ORDERS_KEY);
       localStorage.removeItem(LS_CLIENTS_KEY);
+      localStorage.removeItem(LS_UNITS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
       OfflineStore.clearAllDataCaches();
       return null;
@@ -158,8 +184,10 @@ export const DataService = {
       ordersMemoryCache = null;
       profileMemoryCache = null;
       clientsMemoryCache = null;
+      unitsMemoryCache = null;
       localStorage.removeItem(LS_ORDERS_KEY);
       localStorage.removeItem(LS_CLIENTS_KEY);
+      localStorage.removeItem(LS_UNITS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
       OfflineStore.clearAllDataCaches();
     }
@@ -231,6 +259,347 @@ export const DataService = {
     const stored = safeLocalStorageGet(LS_CLIENTS_KEY, []);
     clientsMemoryCache = stored;
     return stored;
+  },
+
+  async saveClient(clientData) {
+    const nome = (clientData.nome || '').trim();
+    if (!nome) throw new Error('Informe o nome do cliente.');
+
+    const list = this.getClients();
+    const existingIdx = list.findIndex(
+      (c) => (clientData.id && c.id === clientData.id) || c.nome.toLowerCase() === nome.toLowerCase()
+    );
+    const localId = clientData.id || `local-client-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const record = {
+      id: localId,
+      nome,
+      codigo: (clientData.codigo || '').trim(),
+      segmento: (clientData.segmento || 'Hospitalar / Saúde').trim(),
+      ativo: true,
+      updatedAt: new Date().toISOString()
+    };
+
+    const nextList = existingIdx >= 0
+      ? list.map((c, idx) => (idx === existingIdx ? { ...c, ...record, id: c.id } : c))
+      : [...list, record].sort((a, b) => a.nome.localeCompare(b.nome));
+
+    const persistedRecord = nextList.find((c) => c.nome === nome) || record;
+    persistClientsCache(nextList);
+    await OfflineStore.enqueueClientUpsert(persistedRecord.nome);
+
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        const synced = await this.syncClientToSupabase(persistedRecord);
+        if (synced?.id) {
+          const reconciled = this.getClients().map((c) =>
+            c.nome === synced.nome ? { ...c, ...synced } : c
+          );
+          persistClientsCache(reconciled);
+          await OfflineStore.dequeueClientUpsert(persistedRecord.nome);
+          return reconciled;
+        }
+      } catch (err) {
+        console.warn('Cliente salvo offline; aguardando sincronização:', err.message);
+      }
+    }
+
+    return nextList;
+  },
+
+  async deleteClient(clientRow) {
+    const nextList = this.getClients().filter(
+      (c) => c.id !== clientRow.id && c.nome !== clientRow.nome
+    );
+    persistClientsCache(nextList);
+    await OfflineStore.enqueueClientDelete(clientRow.nome);
+
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        if (await this.flushPendingClientDelete(clientRow.nome)) {
+          return nextList;
+        }
+      } catch (err) {
+        console.warn('Exclusão de cliente aguardando conexão:', err.message);
+      }
+    }
+    return nextList;
+  },
+
+  async syncClientToSupabase(clientRecord) {
+    if (!isSupabaseConfigured()) return null;
+    const { client } = getSupabaseClient();
+    if (!client) return null;
+    const { data: userData } = await client.auth.getUser();
+    const user = userData?.user;
+    if (!user) return null;
+
+    const { data, error } = await client
+      .from('clientes')
+      .upsert(
+        {
+          user_id: user.id,
+          nome: clientRecord.nome,
+          codigo: clientRecord.codigo || null,
+          segmento: clientRecord.segmento || 'Hospitalar / Saúde',
+          ativo: true
+        },
+        { onConflict: 'user_id,nome' }
+      )
+      .select('id, nome, codigo, segmento')
+      .single();
+
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return null;
+      throw new Error(error.message);
+    }
+    return data;
+  },
+
+  async flushPendingClient(clientName) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const rec = this.getClients().find((c) => c.nome === clientName);
+    if (!rec) {
+      await OfflineStore.dequeueClientUpsert(clientName);
+      return true;
+    }
+    const synced = await this.syncClientToSupabase(rec);
+    if (!synced?.id) return false;
+    const updated = this.getClients().map((c) => (c.nome === clientName ? { ...c, ...synced } : c));
+    persistClientsCache(updated);
+    await OfflineStore.dequeueClientUpsert(clientName);
+    return true;
+  },
+
+  async flushPendingClientDelete(clientName) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const { client } = getSupabaseClient();
+    if (!client) return false;
+    const { data: userData } = await client.auth.getUser();
+    if (!userData?.user) return false;
+    const { error } = await client
+      .from('clientes')
+      .delete()
+      .eq('user_id', userData.user.id)
+      .eq('nome', clientName);
+    if (error) return false;
+    await OfflineStore.dequeueClientDelete(clientName);
+    return true;
+  },
+
+  // ---- UNIDADES ATENDIDAS (public.unidades) ----
+  getUnits() {
+    if (unitsMemoryCache) return unitsMemoryCache;
+    const stored = safeLocalStorageGet(LS_UNITS_KEY, []);
+    unitsMemoryCache = stored;
+    return stored;
+  },
+
+  async saveUnit(unitData) {
+    const nome = (unitData.nome || '').trim();
+    const regional = (unitData.regional || '').trim();
+    const municipio = (unitData.municipio || '').trim();
+    if (!nome || !regional || !municipio) {
+      throw new Error('Preencha Nome da Unidade, Regional e Município.');
+    }
+
+    const clienteNome = (unitData.clienteNome || '').trim();
+    const list = this.getUnits();
+    const existingIdx = list.findIndex(
+      (u) =>
+        (unitData.id && u.id === unitData.id) ||
+        (u.nome.toLowerCase() === nome.toLowerCase() &&
+          (u.clienteNome || '').toLowerCase() === clienteNome.toLowerCase())
+    );
+
+    const localId =
+      existingIdx >= 0
+        ? list[existingIdx].id
+        : unitData.id || `local-unit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const record = {
+      id: localId,
+      clienteId: unitData.clienteId || (existingIdx >= 0 ? list[existingIdx].clienteId : null),
+      clienteNome,
+      codigo: (unitData.codigo || '').trim(),
+      nome,
+      tipo: (unitData.tipo || 'Hospital').trim(),
+      regional,
+      municipio,
+      uf: (unitData.uf || 'MA').trim().toUpperCase(),
+      endereco: (unitData.endereco || '').trim(),
+      responsavelLocal: (unitData.responsavelLocal || '').trim(),
+      contatoLocal: (unitData.contatoLocal || '').trim(),
+      ativo: true,
+      updatedAt: new Date().toISOString()
+    };
+
+    const nextList =
+      existingIdx >= 0
+        ? list.map((u, idx) => (idx === existingIdx ? { ...u, ...record } : u))
+        : [...list, record].sort((a, b) => a.nome.localeCompare(b.nome));
+
+    persistUnitsCache(nextList);
+
+    // Garantir que o cliente exista na lista local de clientes
+    if (clienteNome && !this.getClients().some((c) => c.nome.toLowerCase() === clienteNome.toLowerCase())) {
+      await this.saveClient({ nome: clienteNome });
+    }
+
+    await OfflineStore.enqueueUnitUpsert(record.id);
+
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        const synced = await this.syncUnitToSupabase(record);
+        if (synced?.id) {
+          const reconciled = this.getUnits().map((u) =>
+            u.id === record.id
+              ? {
+                  ...u,
+                  id: synced.id,
+                  supabaseId: synced.id,
+                  clienteId: synced.cliente_id || u.clienteId
+                }
+              : u
+          );
+          persistUnitsCache(reconciled);
+          await OfflineStore.dequeueUnitUpsert(record.id);
+          return reconciled;
+        }
+      } catch (err) {
+        console.warn('Unidade salva offline; aguardando sincronização:', err.message);
+      }
+    }
+
+    return nextList;
+  },
+
+  async deleteUnit(unit) {
+    const nextList = this.getUnits().filter((u) => u.id !== unit.id);
+    persistUnitsCache(nextList);
+    await OfflineStore.enqueueUnitDelete(unit.id);
+
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        if (await this.flushPendingUnitDelete(unit.id)) {
+          return nextList;
+        }
+      } catch (err) {
+        console.warn('Exclusão de unidade aguardando conexão:', err.message);
+      }
+    }
+    return nextList;
+  },
+
+  async syncUnitToSupabase(unitRecord) {
+    if (!isSupabaseConfigured()) return null;
+    const { client } = getSupabaseClient();
+    if (!client) return null;
+    const { data: userData } = await client.auth.getUser();
+    const user = userData?.user;
+    if (!user) return null;
+
+    let clienteId = isUuid(unitRecord.clienteId) ? unitRecord.clienteId : null;
+    if (!clienteId && unitRecord.clienteNome) {
+      try {
+        const cSynced = await this.syncClientToSupabase({ nome: unitRecord.clienteNome });
+        clienteId = cSynced?.id || null;
+      } catch {
+        // segue sem FK se tabela clientes indisponível
+      }
+    }
+
+    const payload = {
+      user_id: user.id,
+      cliente_id: clienteId,
+      cliente_nome: unitRecord.clienteNome || '',
+      codigo: unitRecord.codigo || null,
+      nome: unitRecord.nome,
+      tipo: unitRecord.tipo || 'Hospital',
+      regional: unitRecord.regional,
+      municipio: unitRecord.municipio,
+      uf: unitRecord.uf || 'MA',
+      endereco: unitRecord.endereco || null,
+      responsavel_local: unitRecord.responsavelLocal || null,
+      contato_local: unitRecord.contatoLocal || null,
+      ativo: true
+    };
+
+    if (isUuid(unitRecord.id)) {
+      const { data, error } = await client
+        .from('unidades')
+        .update(payload)
+        .eq('id', unitRecord.id)
+        .select('id, cliente_id')
+        .single();
+      if (!error && data) return data;
+    }
+
+    const { data, error } = await client
+      .from('unidades')
+      .upsert(payload, { onConflict: 'user_id,cliente_nome,nome' })
+      .select('id, cliente_id')
+      .single();
+
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return null;
+      throw new Error(error.message);
+    }
+    return data;
+  },
+
+  async flushPendingUnit(unitKey) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const rec = this.getUnits().find((u) => u.id === unitKey);
+    if (!rec) {
+      await OfflineStore.dequeueUnitUpsert(unitKey);
+      return true;
+    }
+    const synced = await this.syncUnitToSupabase(rec);
+    if (!synced?.id) return false;
+    const updated = this.getUnits().map((u) =>
+      u.id === unitKey ? { ...u, id: synced.id, supabaseId: synced.id, clienteId: synced.cliente_id || u.clienteId } : u
+    );
+    persistUnitsCache(updated);
+    await OfflineStore.dequeueUnitUpsert(unitKey);
+    return true;
+  },
+
+  async flushPendingUnitDelete(unitKey) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    if (!isUuid(unitKey)) {
+      await OfflineStore.dequeueUnitDelete(unitKey);
+      return true;
+    }
+    const { client } = getSupabaseClient();
+    if (!client) return false;
+    const { error } = await client.from('unidades').delete().eq('id', unitKey);
+    if (error && error.code !== '42P01' && error.code !== 'PGRST205') return false;
+    await OfflineStore.dequeueUnitDelete(unitKey);
+    return true;
+  },
+
+  async importUnitsFromOrders(orders = []) {
+    let current = this.getUnits();
+    for (const ord of orders) {
+      const nome = (ord.hospitalName || '').trim();
+      if (!nome) continue;
+      const clienteNome = (ord.clientName || '').trim();
+      const exists = current.some(
+        (u) =>
+          u.nome.toLowerCase() === nome.toLowerCase() &&
+          (u.clienteNome || '').toLowerCase() === clienteNome.toLowerCase()
+      );
+      if (!exists) {
+        current = await this.saveUnit({
+          clienteNome,
+          nome,
+          regional: ord.regional || 'Regional',
+          municipio: ord.municipio || 'Município',
+          tipo: 'Hospital'
+        });
+      }
+    }
+    return current;
   },
 
   // ---- INSPEÇÕES & CHECKLISTS (public.inspecoes + public.inspecao_respostas) ----
@@ -490,7 +859,8 @@ export const DataService = {
       return {
         orders: this.getOrders(),
         baseItems: this.getBaseChecklistItems(),
-        clients: this.getClients()
+        clients: this.getClients(),
+        units: this.getUnits()
       };
     }
     const { client } = getSupabaseClient();
@@ -501,9 +871,10 @@ export const DataService = {
 
     const modelMap = await this.getChecklistModelMap(client);
     const canonicalBase = modelMap.baseItems.length > 0 ? modelMap.baseItems : EMSERH_BASE_ITEMS;
+    const pending = OfflineStore.getPendingIndex();
 
-    // Carregar clientes reais se a tabela existir
-    let clients = [];
+    // Carregar clientes reais se a tabela existir (preservando pendências offline)
+    let clients = this.getClients();
     try {
       const { data: cData, error: cErr } = await client
         .from('clientes')
@@ -511,13 +882,60 @@ export const DataService = {
         .eq('ativo', true)
         .order('nome', { ascending: true });
       if (!cErr && Array.isArray(cData)) {
-        clients = cData;
-        clientsMemoryCache = clients;
-        safeLocalStorageSet(LS_CLIENTS_KEY, JSON.stringify(clients));
-        OfflineStore.saveCache('clients', clients);
+        const delClients = new Set(pending.deleteClients || []);
+        const dirtyClients = new Set(pending.upsertClients || []);
+        const localByClient = new Map(clients.map((c) => [c.nome, c]));
+        const mergedClients = cData
+          .filter((c) => !delClients.has(c.nome))
+          .map((c) => (dirtyClients.has(c.nome) && localByClient.has(c.nome) ? localByClient.get(c.nome) : c));
+        const seenClientNames = new Set(mergedClients.map((c) => c.nome));
+        const localOnlyClients = clients.filter((c) => dirtyClients.has(c.nome) && !seenClientNames.has(c.nome));
+        clients = [...mergedClients, ...localOnlyClients].sort((a, b) => a.nome.localeCompare(b.nome));
+        persistClientsCache(clients);
       }
     } catch {
       // ignora se migration 002 não foi aplicada
+    }
+
+    // Carregar unidades reais se migration 004 estiver aplicada (preservando pendências offline)
+    let units = this.getUnits();
+    try {
+      const { data: uData, error: uErr } = await client
+        .from('unidades')
+        .select('*')
+        .eq('ativo', true)
+        .order('nome', { ascending: true });
+      if (!uErr && Array.isArray(uData)) {
+        const mappedRemoteUnits = uData.map((u) => ({
+          id: u.id,
+          supabaseId: u.id,
+          clienteId: u.cliente_id || null,
+          clienteNome: u.cliente_nome || '',
+          codigo: u.codigo || '',
+          nome: u.nome,
+          tipo: u.tipo || 'Hospital',
+          regional: u.regional,
+          municipio: u.municipio,
+          uf: u.uf || 'MA',
+          endereco: u.endereco || '',
+          responsavelLocal: u.responsavel_local || '',
+          contatoLocal: u.contato_local || '',
+          ativo: u.ativo !== false,
+          updatedAt: u.updated_at
+        }));
+        const delUnits = new Set(pending.deleteUnits || []);
+        const dirtyUnits = new Set(pending.upsertUnits || []);
+        const localByUnit = new Map(units.map((u) => [u.id, u]));
+        const mergedUnits = mappedRemoteUnits
+          .filter((u) => !delUnits.has(u.id))
+          .map((u) => (dirtyUnits.has(u.id) && localByUnit.has(u.id) ? localByUnit.get(u.id) : u));
+        const seenUnitIds = new Set(mergedUnits.map((u) => u.id));
+        const localOnlyUnits = units.filter((u) => dirtyUnits.has(u.id) && !seenUnitIds.has(u.id));
+        units = [...mergedUnits, ...localOnlyUnits].sort((a, b) => a.nome.localeCompare(b.nome));
+        persistUnitsCache(units);
+      }
+    } catch {
+      // ignora se migration 004 não foi aplicada ainda
     }
 
     let { data: inspecoes, error } = await client
@@ -527,6 +945,7 @@ export const DataService = {
         codigo_kivo,
         cliente_id,
         cliente_nome,
+        unidade_id,
         unidade,
         regional,
         municipio,
@@ -549,7 +968,7 @@ export const DataService = {
       .order('data_inspecao', { ascending: false })
       .order('created_at', { ascending: false });
 
-    if (error && (error.code === 'PGRST204' || error.message?.includes('cliente_'))) {
+    if (error && (error.code === 'PGRST204' || error.message?.includes('cliente_') || error.message?.includes('unidade_id'))) {
       const retry = await client
         .from('inspecoes')
         .select(`
@@ -611,6 +1030,7 @@ export const DataService = {
         id: insp.codigo_kivo,
         supabaseId: insp.id,
         clientName: insp.cliente_nome || '',
+        unidadeId: insp.unidade_id || null,
         title: `Inspeção Ambiental — ${insp.unidade}`,
         hospitalName: insp.unidade,
         regional: insp.regional,
@@ -626,7 +1046,6 @@ export const DataService = {
     });
 
     // Preservar edições/exclusões feitas offline que ainda não foram enviadas para o Supabase
-    const pending = OfflineStore.getPendingIndex();
     const deletedSet = new Set(pending.deleteOrders);
     const dirtySet = new Set(pending.upsertOrders);
     const localOrders = this.getOrders();
@@ -646,7 +1065,8 @@ export const DataService = {
     return {
       orders: finalOrders,
       baseItems: canonicalBase,
-      clients
+      clients,
+      units
     };
   },
 
@@ -692,27 +1112,47 @@ export const DataService = {
       }
     }
 
+    const unidadeId = isUuid(order.unidadeId) ? order.unidadeId : null;
+
     let { data: inspecaoRow, error: inspecaoError } = await client
       .from('inspecoes')
       .upsert(
         {
           ...basePayload,
           ...(clientName ? { cliente_nome: clientName } : {}),
-          ...(clienteId ? { cliente_id: clienteId } : {})
+          ...(clienteId ? { cliente_id: clienteId } : {}),
+          ...(unidadeId ? { unidade_id: unidadeId } : {})
         },
         { onConflict: 'codigo_kivo' }
       )
       .select('id')
       .single();
 
-    if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_'))) {
+    if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_') || inspecaoError.message?.includes('unidade_id'))) {
       const retry = await client
         .from('inspecoes')
-        .upsert(basePayload, { onConflict: 'codigo_kivo' })
+        .upsert(
+          {
+            ...basePayload,
+            ...(clientName ? { cliente_nome: clientName } : {}),
+            ...(clienteId ? { cliente_id: clienteId } : {})
+          },
+          { onConflict: 'codigo_kivo' }
+        )
         .select('id')
         .single();
       inspecaoRow = retry.data;
       inspecaoError = retry.error;
+
+      if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_'))) {
+        const retry2 = await client
+          .from('inspecoes')
+          .upsert(basePayload, { onConflict: 'codigo_kivo' })
+          .select('id')
+          .single();
+        inspecaoRow = retry2.data;
+        inspecaoError = retry2.error;
+      }
     }
 
     if (inspecaoError) {

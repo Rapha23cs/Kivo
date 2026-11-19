@@ -43,6 +43,7 @@ export default function ReportEditorModal({
   onSaveReport,
   onLocalDraftUpdate,
   linkedOrder,
+  units = [],
   userProfile
 }) {
   const resumeStorageKey = report?.codigoRelatorio
@@ -684,6 +685,37 @@ export default function ReportEditorModal({
                       <h3 className="font-semibold text-[#F4F4F5] text-sm border-b border-[#1F2024] pb-2.5">
                         Identificação da Inspeção Ambiental
                       </h3>
+
+                      {units.length > 0 && (
+                        <div className="bg-[#0D0E10] border border-[#2EB88A]/30 rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
+                          <span className="text-[11px] font-medium text-[#34D399] shrink-0">
+                            Preencher por Unidade:
+                          </span>
+                          <select
+                            value={draft.unidadeId || ''}
+                            onChange={(e) => {
+                              const found = units.find((u) => u.id === e.target.value);
+                              if (!found) return;
+                              applyDraftUpdate((prev) => ({
+                                ...prev,
+                                unidadeId: found.id,
+                                clienteNome: found.clienteNome || prev.clienteNome,
+                                unidade: found.nome || prev.unidade,
+                                cidade: found.municipio || prev.cidade,
+                                regional: found.regional || prev.regional
+                              }));
+                            }}
+                            className="flex-1 bg-[#141518] border border-[#27282E] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                          >
+                            <option value="">-- Selecionar unidade cadastrada (opcional) --</option>
+                            {units.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.nome} {u.clienteNome ? `(${u.clienteNome})` : ''} — {u.municipio}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         <div>

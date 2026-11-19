@@ -12,6 +12,10 @@ const EMPTY_INDEX = {
   deleteOrders: [],
   upsertReports: [],
   deleteReports: [],
+  upsertUnits: [],
+  deleteUnits: [],
+  upsertClients: [],
+  deleteClients: [],
   updateProfile: false
 };
 
@@ -55,6 +59,10 @@ function getIndex() {
     deleteOrders: Array.isArray(raw.deleteOrders) ? raw.deleteOrders : [],
     upsertReports: Array.isArray(raw.upsertReports) ? raw.upsertReports : [],
     deleteReports: Array.isArray(raw.deleteReports) ? raw.deleteReports : [],
+    upsertUnits: Array.isArray(raw.upsertUnits) ? raw.upsertUnits : [],
+    deleteUnits: Array.isArray(raw.deleteUnits) ? raw.deleteUnits : [],
+    upsertClients: Array.isArray(raw.upsertClients) ? raw.upsertClients : [],
+    deleteClients: Array.isArray(raw.deleteClients) ? raw.deleteClients : [],
     updateProfile: Boolean(raw.updateProfile)
   };
 }
@@ -186,6 +194,10 @@ export const OfflineStore = {
       idx.deleteOrders.length +
       idx.upsertReports.length +
       idx.deleteReports.length +
+      idx.upsertUnits.length +
+      idx.deleteUnits.length +
+      idx.upsertClients.length +
+      idx.deleteClients.length +
       (idx.updateProfile ? 1 : 0)
     );
   },
@@ -316,6 +328,98 @@ export const OfflineStore = {
     idx.updateProfile = false;
     saveIndex(idx);
     await idbDelete(STORE_QUEUE, 'update_profile:current');
+  },
+
+  async enqueueUnitUpsert(unitKey) {
+    if (!unitKey) return;
+    const idx = getIndex();
+    idx.deleteUnits = idx.deleteUnits.filter((k) => k !== unitKey);
+    if (!idx.upsertUnits.includes(unitKey)) idx.upsertUnits.push(unitKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `delete_unit:${unitKey}`);
+    await idbPut(STORE_QUEUE, {
+      id: `upsert_unit:${unitKey}`,
+      kind: 'upsert_unit',
+      entityKey: unitKey,
+      updatedAt: new Date().toISOString()
+    });
+  },
+
+  async dequeueUnitUpsert(unitKey) {
+    if (!unitKey) return;
+    const idx = getIndex();
+    idx.upsertUnits = idx.upsertUnits.filter((k) => k !== unitKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `upsert_unit:${unitKey}`);
+  },
+
+  async enqueueUnitDelete(unitKey) {
+    if (!unitKey) return;
+    const idx = getIndex();
+    idx.upsertUnits = idx.upsertUnits.filter((k) => k !== unitKey);
+    if (!idx.deleteUnits.includes(unitKey)) idx.deleteUnits.push(unitKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `upsert_unit:${unitKey}`);
+    await idbPut(STORE_QUEUE, {
+      id: `delete_unit:${unitKey}`,
+      kind: 'delete_unit',
+      entityKey: unitKey,
+      updatedAt: new Date().toISOString()
+    });
+  },
+
+  async dequeueUnitDelete(unitKey) {
+    if (!unitKey) return;
+    const idx = getIndex();
+    idx.deleteUnits = idx.deleteUnits.filter((k) => k !== unitKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `delete_unit:${unitKey}`);
+  },
+
+  async enqueueClientUpsert(clientKey) {
+    if (!clientKey) return;
+    const idx = getIndex();
+    idx.deleteClients = idx.deleteClients.filter((k) => k !== clientKey);
+    if (!idx.upsertClients.includes(clientKey)) idx.upsertClients.push(clientKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `delete_client:${clientKey}`);
+    await idbPut(STORE_QUEUE, {
+      id: `upsert_client:${clientKey}`,
+      kind: 'upsert_client',
+      entityKey: clientKey,
+      updatedAt: new Date().toISOString()
+    });
+  },
+
+  async dequeueClientUpsert(clientKey) {
+    if (!clientKey) return;
+    const idx = getIndex();
+    idx.upsertClients = idx.upsertClients.filter((k) => k !== clientKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `upsert_client:${clientKey}`);
+  },
+
+  async enqueueClientDelete(clientKey) {
+    if (!clientKey) return;
+    const idx = getIndex();
+    idx.upsertClients = idx.upsertClients.filter((k) => k !== clientKey);
+    if (!idx.deleteClients.includes(clientKey)) idx.deleteClients.push(clientKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `upsert_client:${clientKey}`);
+    await idbPut(STORE_QUEUE, {
+      id: `delete_client:${clientKey}`,
+      kind: 'delete_client',
+      entityKey: clientKey,
+      updatedAt: new Date().toISOString()
+    });
+  },
+
+  async dequeueClientDelete(clientKey) {
+    if (!clientKey) return;
+    const idx = getIndex();
+    idx.deleteClients = idx.deleteClients.filter((k) => k !== clientKey);
+    saveIndex(idx);
+    await idbDelete(STORE_QUEUE, `delete_client:${clientKey}`);
   },
 
   async listQueuedOps() {
