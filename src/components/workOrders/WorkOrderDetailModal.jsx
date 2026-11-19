@@ -53,7 +53,8 @@ import {
   formatDateTimeWatermark,
   exportCsvRows,
   buildExecutiveSummaryText,
-  copyTextToClipboard
+  copyTextToClipboard,
+  sanitizeMediaUrl
 } from '../../utils/kivoHelpers';
 import {
   EMSERH_ORIENTATIONS,
@@ -1283,7 +1284,7 @@ export default function WorkOrderDetailModal({
                                   {item.evidenceUrl && (
                                     <div className="mt-2 p-2 bg-[#141518] rounded-lg border border-[#232429] flex items-center gap-2.5">
                                       <img
-                                        src={item.evidenceUrl}
+                                        src={sanitizeMediaUrl(item.evidenceUrl)}
                                         alt="Evidência"
                                         onClick={() => openLightboxForItem(item.id)}
                                         className="w-14 h-12 object-cover rounded border border-[#27282E] shrink-0 cursor-pointer hover:opacity-85 transition"
@@ -1352,7 +1353,7 @@ export default function WorkOrderDetailModal({
                               {item.evidenceUrl && (
                                 <div className="p-2 bg-[#0D0E10] rounded-lg border border-[#232429] flex items-center gap-2.5">
                                 <img
-                                  src={item.evidenceUrl}
+                                  src={sanitizeMediaUrl(item.evidenceUrl)}
                                   alt="Evidência"
                                   onClick={() => openLightboxForItem(item.id)}
                                   className="w-12 h-10 object-cover rounded border border-[#27282E] shrink-0 cursor-pointer hover:opacity-85 transition"
@@ -1482,7 +1483,7 @@ export default function WorkOrderDetailModal({
                         {desvio.evidenceUrl && (
                           <div className="flex items-center gap-3 pt-1">
                             <img
-                              src={desvio.evidenceUrl}
+                              src={sanitizeMediaUrl(desvio.evidenceUrl)}
                               alt="Evidência"
                               onClick={() => openLightboxForItem(desvio.id)}
                               className="w-16 h-12 object-cover rounded-lg border border-[#232429] cursor-pointer hover:opacity-85 transition"

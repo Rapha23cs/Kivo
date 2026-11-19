@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Download, Camera } from 'lucide-react';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function ImageLightboxModal({
   isOpen,
@@ -8,7 +9,9 @@ export default function ImageLightboxModal({
   onChangeIndex,
   onClose
 }) {
-  const safeList = images.filter((img) => Boolean(img?.url));
+  const safeList = images
+    .map((img) => ({ ...img, url: sanitizeMediaUrl(img?.url) }))
+    .filter((img) => Boolean(img.url));
   const clampedIndex = Math.max(0, Math.min(currentIndex, safeList.length - 1));
   const current = safeList[clampedIndex];
 

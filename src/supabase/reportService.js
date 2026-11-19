@@ -12,7 +12,13 @@ import {
   createBlankReport
 } from '../data/reportTemplateData';
 import { calculateInspectionSummary } from '../data/emserhChecklistData';
-import { compressImageToDataUrl, uploadDataUrlToStorage, isUuid } from './dataService';
+import {
+  compressImageToDataUrl,
+  uploadDataUrlToStorage,
+  isUuid,
+  refreshSignedMediaUrls,
+  removeStorageFilesByUrls
+} from './dataService';
 import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
 
 const LS_REPORTS_KEY = 'kivo_environmental_reports';
@@ -453,6 +459,11 @@ export const ReportService = {
   },
 
   async deleteReport(report) {
+    const mediaUrls = [
+      report?.fachadaUrl,
+      ...(report?.registrosFotograficos || []).map((f) => f?.fotoUrl)
+    ].filter(Boolean);
+
     const nextList = getStoredReports().filter(
       (r) => r.id !== report.id && r.codigoRelatorio !== report.codigoRelatorio
     );
@@ -469,6 +480,7 @@ export const ReportService = {
             .eq('codigo_relatorio', report.codigoRelatorio);
           if (!error) {
             await OfflineStore.dequeueReportDelete(report.codigoRelatorio);
+            await removeStorageFilesByUrls(mediaUrls);
           }
         }
       } catch (err) {
@@ -601,6 +613,30 @@ export const ReportService = {
       };
     });
 
+    // Renovar URLs assinadas (7 dias) ao sincronizar relatórios do Supabase
+    if (navigator.onLine !== false) {
+      const reportMediaUrls = [];
+      mapped.forEach((rep) => {
+        if (rep.fachadaUrl) reportMediaUrls.push(rep.fachadaUrl);
+        (rep.registrosFotograficos || []).forEach((f) => {
+          if (f.fotoUrl) reportMediaUrls.push(f.fotoUrl);
+        });
+      });
+      const refreshedMap = await refreshSignedMediaUrls(client, reportMediaUrls);
+      if (refreshedMap.size > 0) {
+        mapped.forEach((rep) => {
+          if (rep.fachadaUrl && refreshedMap.has(rep.fachadaUrl)) {
+            rep.fachadaUrl = refreshedMap.get(rep.fachadaUrl);
+          }
+          rep.registrosFotograficos.forEach((f) => {
+            if (f.fotoUrl && refreshedMap.has(f.fotoUrl)) {
+              f.fotoUrl = refreshedMap.get(f.fotoUrl);
+            }
+          });
+        });
+      }
+    }
+
     // Preservar relatórios alterados/excluídos offline até o envio ser concluído
     const pending = OfflineStore.getPendingIndex();
     const deletedSet = new Set(pending.deleteReports);
@@ -695,19 +731,77 @@ export const ReportService = {
       status: report.status === 'finalizado' ? 'finalizado' : 'rascunho'
     };
 
-    let { data: savedHeader, error: headerError } = await client
-      .from('relatorios_inspecao')
-      .upsert(headerPayload, { onConflict: 'codigo_relatorio' })
-      .select('id')
-      .single();
+    const desviosPayload = (report.desvios || [])
+      .filter((d) => d.descricao?.trim())
+      .map((d, idx) => ({
+        numero: idx + 1,
+        descricao: d.descricao.trim(),
+        classificacao: d.classificacao || 'Desvio Pontual',
+        severidade_nc: d.classificacao === 'Não Conformidade Ambiental' ? (d.severidadeNc || 'Menor') : null,
+        tratativa: d.tratativa || null,
+        responsavel: d.responsavel || null,
+        prazo: d.prazo || null,
+        status: d.status || 'Em Aberto'
+      }));
+
+    const fotosPayload = (report.registrosFotograficos || [])
+      .filter((f) => f.fotoUrl || f.observacao?.trim() || f.ordem > REPORT_PHOTO_SLOTS.length)
+      .map((f) => ({
+        ordem: f.ordem,
+        secao: f.secao,
+        legenda: f.legenda,
+        foto_url: f.fotoUrl || null,
+        observacao: f.observacao || null,
+        incluir_no_relatorio: f.incluirNoRelatorio !== false
+      }));
+
+    // Tenta persistência transacional via RPC (migration 005)
+    const { data: rpcData, error: rpcError } = await client.rpc('sync_relatorio_completo', {
+      p_header: headerPayload,
+      p_desvios: desviosPayload,
+      p_fotos: fotosPayload
+    });
+
+    if (!rpcError && rpcData?.id) {
+      return { id: rpcData.id, inspecao_id: inspecaoId };
+    }
+
+    const canFallbackFromRpc =
+      !rpcError ||
+      rpcError.code === '42883' ||
+      rpcError.code === 'PGRST202' ||
+      rpcError.code === '42703' ||
+      rpcError.code === 'PGRST204' ||
+      rpcError.message?.includes('sync_relatorio_completo') ||
+      rpcError.message?.includes('Could not find the function') ||
+      rpcError.message?.includes('unidade_id');
+
+    if (rpcError && !canFallbackFromRpc) {
+      throw new Error(rpcError.message);
+    }
+
+    const upsertHeader = async (payload) => {
+      let result = await client
+        .from('relatorios_inspecao')
+        .upsert(payload, { onConflict: 'user_id,codigo_relatorio' })
+        .select('id')
+        .single();
+
+      if (result.error?.code === '42P10') {
+        result = await client
+          .from('relatorios_inspecao')
+          .upsert(payload, { onConflict: 'codigo_relatorio' })
+          .select('id')
+          .single();
+      }
+      return result;
+    };
+
+    let { data: savedHeader, error: headerError } = await upsertHeader(headerPayload);
 
     if (headerError && (headerError.code === 'PGRST204' || headerError.message?.includes('unidade_id'))) {
       const { unidade_id: _ignored, ...fallbackHeader } = headerPayload;
-      const retry = await client
-        .from('relatorios_inspecao')
-        .upsert(fallbackHeader, { onConflict: 'codigo_relatorio' })
-        .select('id')
-        .single();
+      const retry = await upsertHeader(fallbackHeader);
       savedHeader = retry.data;
       headerError = retry.error;
     }
@@ -720,40 +814,18 @@ export const ReportService = {
 
     // Substituir desvios da tabela do relatório
     await client.from('relatorio_desvios').delete().eq('relatorio_id', relatorioId);
-    const desvios = (report.desvios || []).filter((d) => d.descricao?.trim());
-    if (desvios.length > 0) {
+    if (desviosPayload.length > 0) {
       const { error: desvErr } = await client.from('relatorio_desvios').insert(
-        desvios.map((d, idx) => ({
-          relatorio_id: relatorioId,
-          numero: idx + 1,
-          descricao: d.descricao.trim(),
-          classificacao: d.classificacao || 'Desvio Pontual',
-          severidade_nc: d.classificacao === 'Não Conformidade Ambiental' ? (d.severidadeNc || 'Menor') : null,
-          tratativa: d.tratativa || null,
-          responsavel: d.responsavel || null,
-          prazo: d.prazo || null,
-          status: d.status || 'Em Aberto'
-        }))
+        desviosPayload.map((d) => ({ relatorio_id: relatorioId, ...d }))
       );
       if (desvErr) throw new Error(desvErr.message);
     }
 
     // Salvar registros fotográficos preenchidos ou customizados
     await client.from('relatorio_registros_fotograficos').delete().eq('relatorio_id', relatorioId);
-    const photosToPersist = (report.registrosFotograficos || []).filter(
-      (f) => f.fotoUrl || f.observacao?.trim() || f.ordem > REPORT_PHOTO_SLOTS.length
-    );
-    if (photosToPersist.length > 0) {
+    if (fotosPayload.length > 0) {
       const { error: fotoErr } = await client.from('relatorio_registros_fotograficos').insert(
-        photosToPersist.map((f) => ({
-          relatorio_id: relatorioId,
-          ordem: f.ordem,
-          secao: f.secao,
-          legenda: f.legenda,
-          foto_url: f.fotoUrl || null,
-          observacao: f.observacao || null,
-          incluir_no_relatorio: f.incluirNoRelatorio !== false
-        }))
+        fotosPayload.map((f) => ({ relatorio_id: relatorioId, ...f }))
       );
       if (fotoErr) throw new Error(fotoErr.message);
     }

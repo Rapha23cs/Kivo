@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Printer, FileText } from 'lucide-react';
 import { calculateInspectionSummary, calculateTopicBreakdown, EMSERH_TOPICS } from '../../data/emserhChecklistData';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function TechnicalReportView({ order, onClose }) {
   if (!order) return null;
@@ -228,7 +229,7 @@ export default function TechnicalReportView({ order, onClose }) {
 
                     {desvio.evidenceUrl && (
                       <div className="flex items-center gap-2 pt-1">
-                        <img src={desvio.evidenceUrl} alt="Evidência" className="w-20 h-14 object-cover rounded border border-slate-300" />
+                        <img src={sanitizeMediaUrl(desvio.evidenceUrl)} alt="Evidência" className="w-20 h-14 object-cover rounded border border-slate-300" />
                         <span className="text-[11px] text-slate-500">Registro fotográfico anexado.</span>
                       </div>
                     )}

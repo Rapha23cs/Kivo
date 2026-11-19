@@ -25,13 +25,101 @@ function normalizeChecklistStatus(item) {
   return null;
 }
 
+const MAX_IMAGE_FILE_BYTES = 25 * 1024 * 1024;
+const SIGNED_MEDIA_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 dias (renovado ao sincronizar)
+
+export function extractStoragePathFromUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return null;
+  const match = rawUrl.match(/\/relatorios-midia\/([^?#]+)/);
+  if (!match || !match[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+export async function refreshSignedMediaUrls(client, urls = []) {
+  const urlMap = new Map();
+  if (!client || !Array.isArray(urls) || urls.length === 0) return urlMap;
+
+  const pathToRawUrls = new Map();
+  urls.forEach((u) => {
+    const path = extractStoragePathFromUrl(u);
+    if (!path) return;
+    if (!pathToRawUrls.has(path)) pathToRawUrls.set(path, []);
+    pathToRawUrls.get(path).push(u);
+  });
+
+  const uniquePaths = Array.from(pathToRawUrls.keys());
+  if (uniquePaths.length === 0) return urlMap;
+
+  try {
+    const bucket = client.storage.from('relatorios-midia');
+    if (typeof bucket.createSignedUrls === 'function') {
+      const { data, error } = await bucket.createSignedUrls(uniquePaths, SIGNED_MEDIA_TTL_SECONDS);
+      if (!error && Array.isArray(data)) {
+        data.forEach((entry) => {
+          if (entry?.path && entry?.signedUrl) {
+            const originals = pathToRawUrls.get(entry.path) || [];
+            originals.forEach((raw) => urlMap.set(raw, entry.signedUrl));
+          }
+        });
+        return urlMap;
+      }
+    }
+
+    const results = await Promise.all(
+      uniquePaths.map(async (path) => {
+        const { data } = await bucket.createSignedUrl(path, SIGNED_MEDIA_TTL_SECONDS);
+        return { path, signedUrl: data?.signedUrl || null };
+      })
+    );
+    results.forEach(({ path, signedUrl }) => {
+      if (!signedUrl) return;
+      const originals = pathToRawUrls.get(path) || [];
+      originals.forEach((raw) => urlMap.set(raw, signedUrl));
+    });
+  } catch {
+    // fallback silencioso mantendo URL atual
+  }
+
+  return urlMap;
+}
+
+export async function removeStorageFilesByUrls(urls = []) {
+  if (!isSupabaseConfigured() || navigator.onLine === false) return;
+  const paths = Array.from(
+    new Set((urls || []).map(extractStoragePathFromUrl).filter(Boolean))
+  );
+  if (paths.length === 0) return;
+
+  try {
+    const { client } = getSupabaseClient();
+    if (!client) return;
+    await client.storage.from('relatorios-midia').remove(paths);
+  } catch (err) {
+    console.warn('Falha ao limpar arquivos no Storage:', err?.message);
+  }
+}
+
 export function compressImageToDataUrl(file, maxWidth = 1280, quality = 0.78, stampText = '') {
   return new Promise((resolve, reject) => {
+    if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) {
+      reject(new Error('Tipo de arquivo inválido. Selecione uma imagem válida (JPG, PNG ou WebP).'));
+      return;
+    }
+    if (typeof file.size === 'number' && file.size > MAX_IMAGE_FILE_BYTES) {
+      reject(new Error('Imagem excede o tamanho máximo permitido de 25 MB.'));
+      return;
+    }
+
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
     reader.onload = (ev) => {
       const img = new Image();
-      img.onerror = () => resolve(ev.target.result);
+      img.onerror = () => reject(new Error('Arquivo não é uma imagem decodificável.'));
       img.onload = () => {
         const scale = Math.min(1, maxWidth / img.width);
         const canvas = document.createElement('canvas');
@@ -88,7 +176,7 @@ export async function uploadDataUrlToStorage(dataUrl, relativePath) {
 
     const { data: signed } = await client.storage
       .from('relatorios-midia')
-      .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+      .createSignedUrl(filePath, SIGNED_MEDIA_TTL_SECONDS);
 
     return signed?.signedUrl || null;
   } catch {
@@ -798,6 +886,7 @@ export const DataService = {
   },
 
   async deleteOrder(order) {
+    const mediaUrls = (order?.checklist || []).map((item) => item?.evidenceUrl).filter(Boolean);
     const nextOrders = this.getOrders().filter((o) => o.id !== order.id);
     persistOrdersCache(nextOrders);
     await OfflineStore.enqueueOrderDelete(order.id);
@@ -812,6 +901,7 @@ export const DataService = {
             .eq('codigo_kivo', order.id);
           if (!error) {
             await OfflineStore.dequeueOrderDelete(order.id);
+            await removeStorageFilesByUrls(mediaUrls);
           } else {
             console.warn('Erro ao excluir inspeção no Supabase:', error.message);
           }
@@ -1060,6 +1150,26 @@ export const DataService = {
       };
     });
 
+    // Renovar URLs assinadas das evidências (7 dias de validade) ao carregar do Supabase
+    if (navigator.onLine !== false) {
+      const allEvidenceUrls = [];
+      mappedOrders.forEach((ord) => {
+        (ord.checklist || []).forEach((item) => {
+          if (item.evidenceUrl) allEvidenceUrls.push(item.evidenceUrl);
+        });
+      });
+      const refreshedMap = await refreshSignedMediaUrls(client, allEvidenceUrls);
+      if (refreshedMap.size > 0) {
+        mappedOrders.forEach((ord) => {
+          ord.checklist.forEach((item) => {
+            if (item.evidenceUrl && refreshedMap.has(item.evidenceUrl)) {
+              item.evidenceUrl = refreshedMap.get(item.evidenceUrl);
+            }
+          });
+        });
+      }
+    }
+
     // Preservar edições/exclusões feitas offline que ainda não foram enviadas para o Supabase
     const deletedSet = new Set(pending.deleteOrders);
     const dirtySet = new Set(pending.upsertOrders);
@@ -1129,42 +1239,42 @@ export const DataService = {
 
     const unidadeId = isUuid(order.unidadeId) ? order.unidadeId : null;
 
-    let { data: inspecaoRow, error: inspecaoError } = await client
-      .from('inspecoes')
-      .upsert(
-        {
-          ...basePayload,
-          ...(clientName ? { cliente_nome: clientName } : {}),
-          ...(clienteId ? { cliente_id: clienteId } : {}),
-          ...(unidadeId ? { unidade_id: unidadeId } : {})
-        },
-        { onConflict: 'codigo_kivo' }
-      )
-      .select('id')
-      .single();
-
-    if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_') || inspecaoError.message?.includes('unidade_id'))) {
-      const retry = await client
+    const upsertInspecao = async (payload) => {
+      let result = await client
         .from('inspecoes')
-        .upsert(
-          {
-            ...basePayload,
-            ...(clientName ? { cliente_nome: clientName } : {}),
-            ...(clienteId ? { cliente_id: clienteId } : {})
-          },
-          { onConflict: 'codigo_kivo' }
-        )
+        .upsert(payload, { onConflict: 'user_id,codigo_kivo' })
         .select('id')
         .single();
+
+      if (result.error?.code === '42P10') {
+        // Fallback caso a migration 005 ainda não tenha sido executada
+        result = await client
+          .from('inspecoes')
+          .upsert(payload, { onConflict: 'codigo_kivo' })
+          .select('id')
+          .single();
+      }
+      return result;
+    };
+
+    let { data: inspecaoRow, error: inspecaoError } = await upsertInspecao({
+      ...basePayload,
+      ...(clientName ? { cliente_nome: clientName } : {}),
+      ...(clienteId ? { cliente_id: clienteId } : {}),
+      ...(unidadeId ? { unidade_id: unidadeId } : {})
+    });
+
+    if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_') || inspecaoError.message?.includes('unidade_id'))) {
+      const retry = await upsertInspecao({
+        ...basePayload,
+        ...(clientName ? { cliente_nome: clientName } : {}),
+        ...(clienteId ? { cliente_id: clienteId } : {})
+      });
       inspecaoRow = retry.data;
       inspecaoError = retry.error;
 
       if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_'))) {
-        const retry2 = await client
-          .from('inspecoes')
-          .upsert(basePayload, { onConflict: 'codigo_kivo' })
-          .select('id')
-          .single();
+        const retry2 = await upsertInspecao(basePayload);
         inspecaoRow = retry2.data;
         inspecaoError = retry2.error;
       }

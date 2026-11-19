@@ -44,7 +44,8 @@ import {
   formatDateTimeWatermark,
   exportCsvRows,
   buildExecutiveSummaryText,
-  copyTextToClipboard
+  copyTextToClipboard,
+  sanitizeMediaUrl
 } from '../../utils/kivoHelpers';
 
 export default function ReportEditorModal({
@@ -753,7 +754,7 @@ export default function ReportEditorModal({
                           {slot.fotoUrl ? (
                             <div className="w-full space-y-2">
                               <img
-                                src={slot.fotoUrl}
+                                src={sanitizeMediaUrl(slot.fotoUrl)}
                                 alt={slot.legenda}
                                 onClick={() => openLightboxByKey(`slot-${slot.ordem}`)}
                                 className="w-full h-40 object-cover rounded-lg border border-[#232429] cursor-pointer hover:opacity-90 transition"
@@ -987,7 +988,7 @@ export default function ReportEditorModal({
                         {draft.fachadaUrl ? (
                           <div className="w-full space-y-2.5">
                             <img
-                              src={draft.fachadaUrl}
+                              src={sanitizeMediaUrl(draft.fachadaUrl)}
                               alt="Fachada da Unidade"
                               onClick={() => openLightboxByKey('facade')}
                               className="w-full h-44 object-cover rounded-lg border border-[#232429] cursor-pointer hover:opacity-90 transition"

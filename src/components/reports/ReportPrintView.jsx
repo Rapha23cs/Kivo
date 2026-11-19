@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Printer, FileBarChart2, Building2 } from 'lucide-react';
 import { PHOTO_SECTIONS, calculateAdherenceLevel } from '../../data/reportTemplateData';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function ReportPrintView({ report, onClose }) {
   if (!report) return null;
@@ -130,7 +131,7 @@ export default function ReportPrintView({ report, onClose }) {
                 {report.fachadaUrl ? (
                   <>
                     <img
-                      src={report.fachadaUrl}
+                      src={sanitizeMediaUrl(report.fachadaUrl)}
                       alt="Fachada da Unidade"
                       className="w-full h-36 object-cover rounded-lg border border-slate-200"
                     />
@@ -247,7 +248,7 @@ export default function ReportPrintView({ report, onClose }) {
                     {group.items.map((foto) => (
                       <div key={foto.ordem} className="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2 break-inside-avoid">
                         <img
-                          src={foto.fotoUrl}
+                          src={sanitizeMediaUrl(foto.fotoUrl)}
                           alt={foto.legenda}
                           className="w-full h-48 object-cover rounded-lg border border-slate-200 bg-white"
                         />

@@ -22,9 +22,38 @@ export function formatDateTimeWatermark(unitName = '') {
   return unitName ? `KIVO • ${unitName} • ${stamp}` : `KIVO • ${stamp}`;
 }
 
+export function sanitizeMediaUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return '';
+
+  // Permite apenas imagens raster em data URL (bloqueando SVG que pode conter scripts)
+  if (/^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return parsed.href;
+    }
+  } catch {
+    // URL inválida descartada
+  }
+  return '';
+}
+
 export function exportCsvRows(headers, rows, filename) {
   const escapeCell = (val) => {
-    const str = String(val ?? '').replace(/\r?\n/g, ' ').replace(/"/g, '""');
+    let str = String(val ?? '').replace(/\r?\n/g, ' ');
+    // Neutraliza CSV Formula Injection (Excel / LibreOffice)
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
+    str = str.replace(/"/g, '""');
     return `"${str}"`;
   };
   const lines = [
