@@ -35,12 +35,26 @@ import {
   SlidersHorizontal,
   Compass,
   ArrowRight,
+  ArrowDown,
   ExternalLink,
-  RotateCcw
+  RotateCcw,
+  Download,
+  Share2,
+  History
 } from 'lucide-react';
 import Badge from '../common/Badge';
+import { useFeedback } from '../common/FeedbackProvider';
+import ImageLightboxModal from '../common/ImageLightboxModal';
 import TechnicalReportView from './TechnicalReportView';
 import { DataService } from '../../supabase/dataService';
+import { calculateAdherenceLevel } from '../../data/reportTemplateData';
+import {
+  getOrderStatusMeta,
+  formatDateTimeWatermark,
+  exportCsvRows,
+  buildExecutiveSummaryText,
+  copyTextToClipboard
+} from '../../utils/kivoHelpers';
 import {
   EMSERH_ORIENTATIONS,
   EMSERH_TOPICS,
@@ -89,10 +103,12 @@ export default function WorkOrderDetailModal({
   onClose,
   onUpdateOrder,
   linkedReport,
+  previousOrder,
   onOpenTechnicalReport
 }) {
   if (!isOpen || !order) return null;
 
+  const { confirm, toast } = useFeedback();
   const resumeStorageKey = `kivo_resume_order_${order.id}`;
   const initialResume = useMemo(() => {
     try {
@@ -109,6 +125,9 @@ export default function WorkOrderDetailModal({
   const [showOrientations, setShowOrientations] = useState(false);
   const [showOverviewPanel, setShowOverviewPanel] = useState(false);
   const [uploadingItemId, setUploadingItemId] = useState(null);
+  const [stampPhotos, setStampPhotos] = useState(true);
+  const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const [saveBadgeText, setSaveBadgeText] = useState('Sincronizado');
 
   useEffect(() => {
     setCurrentOrder((prev) => {
@@ -136,11 +155,17 @@ export default function WorkOrderDetailModal({
     }
   }, [resumeStorageKey, activeTab, selectedTopic, statusFilter]);
 
-  const statusBadges = {
-    open: { variant: 'info', label: 'Agendada' },
-    in_progress: { variant: 'primary', label: 'Vistoriando' },
-    completed: { variant: 'success', label: 'Laudo Concluído' }
-  };
+  // Mapear desvios da vistoria anterior da mesma unidade (para reincidência e reinspeção)
+  const previousDeviationsMap = useMemo(() => {
+    const map = new Map();
+    if (!previousOrder?.checklist) return map;
+    previousOrder.checklist.forEach((it) => {
+      if (it.status === 'nao' || it.status === 'nao_conforme') {
+        map.set(Number(it.number), it);
+      }
+    });
+    return map;
+  }, [previousOrder]);
 
   // Calcular Resumo da Inspeção em tempo real
   const summary = useMemo(() => {
@@ -152,34 +177,190 @@ export default function WorkOrderDetailModal({
     return calculateTopicBreakdown(currentOrder.checklist || []);
   }, [currentOrder.checklist]);
 
-  const handleToggleComplete = () => {
-    const nextStatus = currentOrder.status === 'completed' ? 'in_progress' : 'completed';
-    const updated = {
-      ...currentOrder,
-      status: nextStatus
-    };
+  const commitOrderUpdate = (updated) => {
     setCurrentOrder(updated);
     onUpdateOrder(updated);
+    setSaveBadgeText(navigator.onLine === false ? 'Salvo offline ✓' : 'Salvo ✓');
   };
 
-  const handleChecklistStatusChange = (itemId, newStatus) => {
-    const updatedChecklist = (currentOrder.checklist || []).map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          status: newStatus,
-          // Se marcar 'nao' e não tiver classificação, define Médio por padrão
-          classification: newStatus === 'nao' ? (item.classification || 'Médio') : item.classification,
-          responsible: newStatus === 'nao' ? (item.responsible || 'Gerência da Unidade / SCIH') : item.responsible,
-          deadline: newStatus === 'nao' ? (item.deadline || '15 dias') : item.deadline
-        };
+  const handleToggleComplete = async () => {
+    if (currentOrder.status === 'completed') {
+      commitOrderUpdate({ ...currentOrder, status: 'in_progress' });
+      toast.info({ title: 'Vistoria reaberta', message: `${currentOrder.id} voltou para Em Andamento.` });
+      return;
+    }
+
+    const missingRule6 = (currentOrder.checklist || []).filter(
+      (i) => (i.status === 'nao' || i.status === 'nao_conforme') && (!i.observation?.trim() || !i.deadline?.trim())
+    );
+    const pendingCount = (currentOrder.checklist || []).filter((i) => !i.status).length;
+
+    if (pendingCount > 0 || missingRule6.length > 0) {
+      const alerts = [];
+      if (pendingCount > 0) alerts.push(`${pendingCount} item(ns) ainda estão sem resposta (Pendentes)`);
+      if (missingRule6.length > 0) alerts.push(`${missingRule6.length} desvio(s) sem observação ou prazo definido (Regra 6)`);
+
+      const ok = await confirm({
+        title: 'Revisar pendências antes de concluir?',
+        message: `Identificamos pontos incompletos nesta inspeção: ${alerts.join(' e ')}. Deseja concluir mesmo assim?`,
+        detail: currentOrder.hospitalName,
+        confirmLabel: 'Concluir mesmo assim',
+        cancelLabel: 'Voltar e revisar',
+        variant: 'warning'
+      });
+      if (!ok) {
+        if (pendingCount > 0) {
+          setActiveTab('checklist');
+          setStatusFilter('pending');
+        }
+        return;
       }
-      return item;
+    }
+
+    commitOrderUpdate({ ...currentOrder, status: 'completed' });
+    toast.success({
+      title: 'Vistoria concluída',
+      message: `${currentOrder.id} • Conformidade ${summary.percentualConformidade}%`
+    });
+  };
+
+  const handleChecklistStatusChange = (itemId, clickedStatus) => {
+    const updatedChecklist = (currentOrder.checklist || []).map((item) => {
+      if (item.id !== itemId) return item;
+      // H3: clicar novamente no mesmo status limpa para pendente (null)
+      const isSame = item.status === clickedStatus;
+      const nextStatus = isSame ? null : clickedStatus;
+      return {
+        ...item,
+        status: nextStatus,
+        classification: nextStatus === 'nao' ? (item.classification || 'Médio') : item.classification,
+        responsible: nextStatus === 'nao' ? (item.responsible || 'Gerência da Unidade / SCIH') : item.responsible,
+        deadline: nextStatus === 'nao' ? (item.deadline || '15 dias') : item.deadline
+      };
     });
 
-    const updated = { ...currentOrder, checklist: updatedChecklist };
-    setCurrentOrder(updated);
-    onUpdateOrder(updated);
+    commitOrderUpdate({ ...currentOrder, checklist: updatedChecklist });
+  };
+
+  const handleBatchMarkPendingTopic = (targetStatus) => {
+    if (selectedTopic === 'ALL') return;
+    const prevSnapshot = currentOrder.checklist;
+    let changedCount = 0;
+
+    const updatedChecklist = (currentOrder.checklist || []).map((item) => {
+      const itemTopic = item.topic || item.topicTitle;
+      if (itemTopic !== selectedTopic || item.status) return item;
+      changedCount += 1;
+      return { ...item, status: targetStatus };
+    });
+
+    if (changedCount === 0) {
+      toast.info({ message: 'Todos os itens desta temática já estão avaliados.' });
+      return;
+    }
+
+    commitOrderUpdate({ ...currentOrder, checklist: updatedChecklist });
+    toast.success({
+      title: `${changedCount} item(ns) marcados como ${targetStatus === 'sim' ? 'Sim' : 'N/A'}`,
+      message: selectedTopic,
+      duration: 6000,
+      action: {
+        label: 'Desfazer',
+        onClick: () => commitOrderUpdate({ ...currentOrder, checklist: prevSnapshot })
+      }
+    });
+  };
+
+  const handleImportPreviousDeviations = async () => {
+    if (!previousOrder || previousDeviationsMap.size === 0) return;
+    const prevSnapshot = currentOrder.checklist;
+    let importedCount = 0;
+
+    const updatedChecklist = (currentOrder.checklist || []).map((item) => {
+      const prevDev = previousDeviationsMap.get(Number(item.number));
+      if (!prevDev || item.status) return item;
+      importedCount += 1;
+      return {
+        ...item,
+        status: 'nao',
+        classification: prevDev.classification || 'Médio',
+        responsible: prevDev.responsible || 'Gerência da Unidade / SCIH',
+        deadline: prevDev.deadline || '15 dias',
+        observation: `[Reincidência de ${previousOrder.id}] ${prevDev.observation || ''}`.trim()
+      };
+    });
+
+    if (importedCount === 0) {
+      toast.info({
+        message: 'Os itens com desvio na vistoria anterior já possuem resposta nesta inspeção.'
+      });
+      return;
+    }
+
+    commitOrderUpdate({ ...currentOrder, checklist: updatedChecklist });
+    toast.success({
+      title: `${importedCount} desvio(s) da vistoria anterior importados`,
+      message: `Origem: ${previousOrder.id}`,
+      duration: 6000,
+      action: {
+        label: 'Desfazer',
+        onClick: () => commitOrderUpdate({ ...currentOrder, checklist: prevSnapshot })
+      }
+    });
+  };
+
+  const handleScrollToNextPending = () => {
+    const nextPending = displayedItems.find((i) => !i.status) || checklistItems.find((i) => !i.status);
+    if (!nextPending) {
+      toast.success({ message: 'Nenhum item pendente restante!' });
+      return;
+    }
+    const el = document.getElementById(`checklist-item-${nextPending.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      setSelectedTopic('ALL');
+      setStatusFilter('pending');
+    }
+  };
+
+  const handleCopySummary = async () => {
+    const text = buildExecutiveSummaryText({
+      code: currentOrder.id,
+      clientName: currentOrder.clientName,
+      unitName: currentOrder.hospitalName,
+      regional: currentOrder.regional,
+      municipio: currentOrder.municipio,
+      date: currentOrder.scheduledDate,
+      totalEvaluated: summary.totalAvaliados,
+      totalConformities: summary.totalSim,
+      conformityPercent: summary.percentualConformidade,
+      adherenceLevel: calculateAdherenceLevel(summary.percentualConformidade),
+      deviations: summary.desvios
+    });
+    await copyTextToClipboard(text);
+    toast.success({
+      title: 'Resumo copiado!',
+      message: 'Pronto para colar no WhatsApp ou e-mail.'
+    });
+  };
+
+  const handleExportDeviationsCsv = () => {
+    if (summary.desvios.length === 0) return;
+    exportCsvRows(
+      ['Item', 'Temática', 'Requisito', 'Classificação', 'Anomalia', 'Responsável', 'Prazo'],
+      summary.desvios.map((d) => [
+        `#${d.number}`,
+        d.topic || '',
+        d.question || '',
+        d.classification || 'Médio',
+        d.observation || '',
+        d.responsible || '',
+        d.deadline || ''
+      ]),
+      `desvios-${currentOrder.id}.csv`
+    );
+    toast.success({ title: 'Planilha exportada', message: `desvios-${currentOrder.id}.csv` });
   };
 
   const handleChecklistFieldChange = (itemId, field, value) => {
@@ -190,9 +371,7 @@ export default function WorkOrderDetailModal({
       return item;
     });
 
-    const updated = { ...currentOrder, checklist: updatedChecklist };
-    setCurrentOrder(updated);
-    onUpdateOrder(updated);
+    commitOrderUpdate({ ...currentOrder, checklist: updatedChecklist });
   };
 
   const handleUploadItemPhoto = async (itemId, e) => {
@@ -200,9 +379,14 @@ export default function WorkOrderDetailModal({
     if (!file) return;
     setUploadingItemId(itemId);
     try {
-      const url = await DataService.uploadChecklistEvidence(file, currentOrder.id, itemId);
+      const stamp = stampPhotos ? formatDateTimeWatermark(currentOrder.hospitalName) : '';
+      const url = await DataService.uploadChecklistEvidence(file, currentOrder.id, itemId, stamp);
       if (url) {
         handleChecklistFieldChange(itemId, 'evidenceUrl', url);
+        toast.success({
+          title: 'Evidência anexada',
+          message: navigator.onLine === false ? 'Salva offline para envio automático.' : 'Imagem salva com sucesso.'
+        });
       }
     } finally {
       setUploadingItemId(null);
@@ -247,6 +431,25 @@ export default function WorkOrderDetailModal({
   const countNA = checklistItems.filter(i => i.status === 'na' || i.status === 'nao_aplicavel').length;
   const countPending = checklistItems.filter(i => !i.status).length;
 
+  const lightboxImages = useMemo(() => {
+    return checklistItems
+      .filter((i) => Boolean(i.evidenceUrl))
+      .map((i) => ({
+        itemId: i.id,
+        url: i.evidenceUrl,
+        title: `Item #${i.number} • ${i.topic || ''}`,
+        subtitle: i.question,
+        observation: i.observation
+      }));
+  }, [checklistItems]);
+
+  const openLightboxForItem = (itemId) => {
+    const idx = lightboxImages.findIndex((img) => img.itemId === itemId);
+    if (idx >= 0) setLightboxIndex(idx);
+  };
+
+  const orderStatusMeta = getOrderStatusMeta(currentOrder.status);
+
   return (
     <>
       <div className="fixed inset-0 z-40 flex items-center justify-center p-0 sm:p-3 bg-black/85 backdrop-blur-sm">
@@ -260,9 +463,12 @@ export default function WorkOrderDetailModal({
                   <ShieldCheck className="w-3 h-3 text-[#2EB88A]" />
                   {currentOrder.id}
                 </span>
-                <Badge variant={statusBadges[currentOrder.status]?.variant || 'neutral'} size="sm">
-                  {statusBadges[currentOrder.status]?.label || currentOrder.status}
+                <Badge variant={orderStatusMeta.variant} size="sm">
+                  {orderStatusMeta.label}
                 </Badge>
+                <span className="text-[10px] font-medium text-[#34D399] bg-[#122620]/70 border border-[#2EB88A]/25 px-2 py-0.5 rounded">
+                  {saveBadgeText}
+                </span>
               </div>
 
               <div className="min-w-0">
@@ -584,32 +790,42 @@ export default function WorkOrderDetailModal({
                         key={i}
                         type="button"
                         onClick={() => setSelectedTopic(topic)}
-                        className={`w-full px-3 py-2 rounded-lg text-xs font-medium transition flex items-center justify-between gap-2 border text-left ${
+                        className={`w-full px-3 py-2 rounded-lg text-xs font-medium transition flex flex-col gap-1.5 border text-left ${
                           isSelected
                             ? 'bg-[#1E2025] border-[#2EB88A]/50 text-[#F4F4F5] font-semibold'
                             : 'bg-transparent border-transparent text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#17181B]'
                         }`}
                         title={config?.description}
                       >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <TopicIcon topic={topic} className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-[#2EB88A]' : 'text-[#71717A]'}`} />
-                          <span className="truncate">{config?.name || topic}</span>
-                        </span>
-                        <span className="flex items-center gap-1.5 shrink-0">
-                          {b?.hasDesvios && (
-                            <span
-                              className="w-1.5 h-1.5 rounded-full bg-[#E11D48]"
-                              title={`${b.nao} desvio(s)`}
-                            />
-                          )}
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${
-                            answered === b?.total && b?.total > 0
-                              ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30'
-                              : 'bg-[#141518] text-[#A1A1AA] border-[#232429]'
-                          }`}>
-                            {b?.total || 0}
+                        <div className="flex items-center justify-between gap-2 w-full">
+                          <span className="flex items-center gap-2 min-w-0">
+                            <TopicIcon topic={topic} className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-[#2EB88A]' : 'text-[#71717A]'}`} />
+                            <span className="truncate">{config?.name || topic}</span>
                           </span>
-                        </span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {b?.hasDesvios && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-[#E11D48]"
+                                title={`${b.nao} desvio(s)`}
+                              />
+                            )}
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${
+                              answered === b?.total && b?.total > 0
+                                ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30'
+                                : 'bg-[#141518] text-[#A1A1AA] border-[#232429]'
+                            }`}>
+                              {answered}/{b?.total || 0}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="w-full h-1 bg-[#0D0E10] rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all ${
+                              b?.hasDesvios ? 'bg-[#F43F5E]' : answered === b?.total && b?.total > 0 ? 'bg-[#2EB88A]' : 'bg-[#52525B]'
+                            }`}
+                            style={{ width: `${b?.total > 0 ? Math.round((answered / b.total) * 100) : 0}%` }}
+                          />
+                        </div>
                       </button>
                     );
                   })}
@@ -725,27 +941,88 @@ export default function WorkOrderDetailModal({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-[#71717A]">
+                  <div className="flex items-center justify-between text-[11px] text-[#71717A] gap-2 flex-wrap">
                     <span className="truncate">
                       Exibindo <strong className="text-[#F4F4F5]">{displayedItems.length}</strong> de {checklistItems.length} itens
                       {selectedTopic !== 'ALL' && (
                         <> em <strong className="text-[#34D399]">{selectedTopic}</strong></>
                       )}
                     </span>
-                    {(selectedTopic !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="inline-flex items-center gap-1.5 text-[11px] text-[#A1A1AA] cursor-pointer" title="Grava data, hora e unidade nas novas fotos enviadas">
+                        <input
+                          type="checkbox"
+                          checked={stampPhotos}
+                          onChange={(e) => setStampPhotos(e.target.checked)}
+                          className="accent-[#2EB88A]"
+                        />
+                        Estampar data/unidade
+                      </label>
+
+                      {countPending > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleScrollToNextPending}
+                          className="px-2.5 py-1 bg-[#18191D] hover:bg-[#23252C] text-[#E4E4E7] border border-[#2D2F36] rounded-md font-medium flex items-center gap-1 transition"
+                        >
+                          <ArrowDown className="w-3 h-3 text-[#34D399]" />
+                          Próximo Pendente
+                        </button>
+                      )}
+
+                      {selectedTopic !== 'ALL' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleBatchMarkPendingTopic('sim')}
+                            className="px-2 py-1 bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/30 rounded-md font-medium transition"
+                            title="Marcar os itens ainda pendentes desta temática como Sim"
+                          >
+                            Pendentes = Sim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleBatchMarkPendingTopic('na')}
+                            className="px-2 py-1 bg-[#1A1B20] hover:bg-[#25272E] text-[#CBD5E1] border border-[#2D2F36] rounded-md font-medium transition"
+                            title="Marcar os itens ainda pendentes desta temática como N/A"
+                          >
+                            Pendentes = N/A
+                          </button>
+                        </>
+                      )}
+
+                      {(selectedTopic !== 'ALL' || statusFilter !== 'ALL' || searchTerm) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTopic('ALL');
+                            setStatusFilter('ALL');
+                            setSearchTerm('');
+                          }}
+                          className="text-[#A1A1AA] hover:text-[#F4F4F5] flex items-center gap-1 font-medium underline underline-offset-2 shrink-0"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Limpar filtros
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {previousOrder && previousDeviationsMap.size > 0 && (
+                    <div className="bg-[#0D0E10] border border-[#2D2F36] rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                      <span className="text-[#A1A1AA] flex items-center gap-1.5">
+                        <History className="w-3.5 h-3.5 text-[#34D399] shrink-0" />
+                        Vistoria anterior encontrada (<strong className="font-mono text-[#F4F4F5]">{previousOrder.id}</strong>) com <strong className="text-[#FB7185]">{previousDeviationsMap.size} desvio(s)</strong> para comparação.
+                      </span>
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedTopic('ALL');
-                          setStatusFilter('ALL');
-                          setSearchTerm('');
-                        }}
-                        className="text-[#A1A1AA] hover:text-[#F4F4F5] flex items-center gap-1 font-medium underline underline-offset-2 shrink-0"
+                        onClick={handleImportPreviousDeviations}
+                        className="px-2.5 py-1 bg-[#1C1D22] hover:bg-[#25272E] text-[#34D399] border border-[#2EB88A]/30 rounded font-medium transition shrink-0 self-start sm:self-auto"
                       >
-                        <RotateCcw className="w-3 h-3" /> Limpar filtros
+                        Importar desvios pendentes p/ reinspeção
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* LISTAGEM ROLÁVEL DOS ITENS COM MÁXIMO ESPAÇO */}
@@ -778,6 +1055,7 @@ export default function WorkOrderDetailModal({
 
                       return (
                         <div
+                          id={`checklist-item-${item.id}`}
                           key={item.id || idx}
                           className={`bg-[#141518] border rounded-xl p-4 sm:p-5 space-y-3.5 transition-all ${
                             isNao
@@ -801,6 +1079,15 @@ export default function WorkOrderDetailModal({
                                   <TopicIcon topic={item.topic || item.topicTitle} className="w-3 h-3 text-[#2EB88A]" />
                                   {item.topic || item.topicTitle}
                                 </span>
+
+                                {previousDeviationsMap.has(Number(item.number)) && (
+                                  <span
+                                    className="text-[10px] font-medium px-2 py-0.5 rounded border bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30"
+                                    title={`Teve desvio na vistoria anterior (${previousOrder?.id})`}
+                                  >
+                                    Desvio anterior
+                                  </span>
+                                )}
 
                                 {isNao && item.classification && (
                                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase tracking-wider border ${
@@ -867,13 +1154,16 @@ export default function WorkOrderDetailModal({
                           {/* REGRA 6: SE MARCADO COMO 'NÃO', EXIBE O PLANO DE AÇÃO OBRIGATÓRIO */}
                           {isNao && (
                             <div className="p-4 sm:p-5 bg-[#0D0E10] border border-[#F43F5E]/30 rounded-lg space-y-3.5 animate-fade-in">
-                              <div className="flex items-center justify-between text-xs font-semibold text-[#FB7185] border-b border-[#232429] pb-2">
+                              <div className="flex items-center justify-between text-xs font-semibold text-[#FB7185] border-b border-[#232429] pb-2 flex-wrap gap-1">
                                 <span className="flex items-center gap-2">
                                   <AlertTriangle className="w-4 h-4 text-[#FB7185]" />
-                                  Detalhamento Obrigatório do Desvio (Regra 6 EMSERH)
+                                  Detalhamento Obrigatório do Desvio (Regra 6)
                                 </span>
-                                <span className="text-[10px] text-[#71717A] font-normal">
-                                  Obrigatório para itens não conformes
+                                <span
+                                  className="text-[10px] text-[#A1A1AA] font-normal cursor-help underline decoration-dotted"
+                                  title="Leve: desvio formal • Médio: impacto moderado (15-30d) • Grave: risco elevado (48h-7d) • Crítico: risco iminente (24h)"
+                                >
+                                  Ver critérios (Leve a Crítico)
                                 </span>
                               </div>
 
@@ -966,41 +1256,51 @@ export default function WorkOrderDetailModal({
                                   <label className="block text-[#A1A1AA] font-medium mb-1">
                                     Evidência Fotográfica (Checklist & Relatório)
                                   </label>
-                                  <label className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] rounded-lg border border-[#2D2F36] text-xs font-medium transition cursor-pointer">
-                                    <Camera className="w-4 h-4 text-[#2EB88A]" />
-                                    {uploadingItemId === item.id
-                                      ? 'Enviando...'
-                                      : item.evidenceUrl
-                                        ? 'Substituir Foto'
-                                        : 'Enviar Fotografia'}
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) => handleUploadItemPhoto(item.id, e)}
-                                      className="hidden"
-                                    />
-                                  </label>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <label className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] rounded-lg border border-[#2D2F36] text-xs font-medium transition cursor-pointer">
+                                      <Camera className="w-3.5 h-3.5 text-[#2EB88A]" />
+                                      <span>{uploadingItemId === item.id ? 'Enviando...' : 'Câmera'}</span>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        onChange={(e) => handleUploadItemPhoto(item.id, e)}
+                                        className="hidden"
+                                      />
+                                    </label>
+                                    <label className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] rounded-lg border border-[#2D2F36] text-xs font-medium transition cursor-pointer">
+                                      <Upload className="w-3.5 h-3.5 text-[#34D399]" />
+                                      <span>{item.evidenceUrl ? 'Trocar' : 'Arquivo'}</span>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => handleUploadItemPhoto(item.id, e)}
+                                        className="hidden"
+                                      />
+                                    </label>
+                                  </div>
 
                                   {item.evidenceUrl && (
                                     <div className="mt-2 p-2 bg-[#141518] rounded-lg border border-[#232429] flex items-center gap-2.5">
                                       <img
                                         src={item.evidenceUrl}
                                         alt="Evidência"
-                                        className="w-14 h-12 object-cover rounded border border-[#27282E] shrink-0"
+                                        onClick={() => openLightboxForItem(item.id)}
+                                        className="w-14 h-12 object-cover rounded border border-[#27282E] shrink-0 cursor-pointer hover:opacity-85 transition"
+                                        title="Clique para ampliar no visualizador"
                                       />
                                       <div className="flex-1 min-w-0">
                                         <span className="text-[11px] text-[#34D399] font-medium block truncate">
                                           Foto Anexada ✓
                                         </span>
                                         <div className="flex items-center gap-2 mt-0.5">
-                                          <a
-                                            href={item.evidenceUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                          <button
+                                            type="button"
+                                            onClick={() => openLightboxForItem(item.id)}
                                             className="text-[10px] text-[#A1A1AA] hover:text-[#F4F4F5] underline"
                                           >
                                             Ampliar
-                                          </a>
+                                          </button>
                                           <button
                                             type="button"
                                             onClick={() => handleChecklistFieldChange(item.id, 'evidenceUrl', '')}
@@ -1051,24 +1351,24 @@ export default function WorkOrderDetailModal({
 
                               {item.evidenceUrl && (
                                 <div className="p-2 bg-[#0D0E10] rounded-lg border border-[#232429] flex items-center gap-2.5">
-                                  <img
-                                    src={item.evidenceUrl}
-                                    alt="Evidência"
-                                    className="w-12 h-10 object-cover rounded border border-[#27282E] shrink-0"
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <span className="text-[11px] text-[#34D399] font-medium block truncate">
-                                      Evidência anexada (pronta para o Relatório)
-                                    </span>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      <a
-                                        href={item.evidenceUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="text-[10px] text-[#A1A1AA] hover:text-[#F4F4F5] underline"
-                                      >
-                                        Ampliar
-                                      </a>
+                                <img
+                                  src={item.evidenceUrl}
+                                  alt="Evidência"
+                                  onClick={() => openLightboxForItem(item.id)}
+                                  className="w-12 h-10 object-cover rounded border border-[#27282E] shrink-0 cursor-pointer hover:opacity-85 transition"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-[11px] text-[#34D399] font-medium block truncate">
+                                    Evidência anexada (pronta para o Relatório)
+                                  </span>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => openLightboxForItem(item.id)}
+                                      className="text-[10px] text-[#A1A1AA] hover:text-[#F4F4F5] underline"
+                                    >
+                                      Ampliar
+                                    </button>
                                       <button
                                         type="button"
                                         onClick={() => handleChecklistFieldChange(item.id, 'evidenceUrl', '')}
@@ -1107,14 +1407,24 @@ export default function WorkOrderDetailModal({
                     </p>
                   </div>
                   {summary.desviosCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowReportModal(true)}
-                      className="px-3 py-1.5 bg-[#221216] text-[#FB7185] border border-[#F43F5E]/30 rounded-lg text-xs font-medium hover:bg-[#2E161B] transition flex items-center gap-1.5"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      Visualizar Matriz no Laudo
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleExportDeviationsCsv}
+                        className="px-3 py-1.5 bg-[#1C1D22] text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium hover:bg-[#25272E] transition flex items-center gap-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#34D399]" />
+                        Exportar CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowReportModal(true)}
+                        className="px-3 py-1.5 bg-[#221216] text-[#FB7185] border border-[#F43F5E]/30 rounded-lg text-xs font-medium hover:bg-[#2E161B] transition flex items-center gap-1.5"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        Visualizar Matriz no Laudo
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -1174,7 +1484,9 @@ export default function WorkOrderDetailModal({
                             <img
                               src={desvio.evidenceUrl}
                               alt="Evidência"
-                              className="w-16 h-12 object-cover rounded-lg border border-[#232429]"
+                              onClick={() => openLightboxForItem(desvio.id)}
+                              className="w-16 h-12 object-cover rounded-lg border border-[#232429] cursor-pointer hover:opacity-85 transition"
+                              title="Clique para ampliar"
                             />
                             <span className="text-xs text-[#71717A]">
                               Registro fotográfico anexado ao laudo para auditoria.
@@ -1197,6 +1509,15 @@ export default function WorkOrderDetailModal({
               <span>• {currentOrder.clientName || currentOrder.hospitalName}</span>
             </div>
             <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="px-3 py-1.5 bg-[#1C1D22] hover:bg-[#23252C] text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+                title="Copiar resumo formatado para WhatsApp / E-mail"
+              >
+                <Share2 className="w-3.5 h-3.5 text-[#34D399]" />
+                <span className="hidden md:inline">Resumo WhatsApp</span>
+              </button>
               {onOpenTechnicalReport && (
                 <button
                   type="button"
@@ -1236,6 +1557,15 @@ export default function WorkOrderDetailModal({
           onClose={() => setShowReportModal(false)}
         />
       )}
+
+      {/* Visualizador Lightbox de Evidências */}
+      <ImageLightboxModal
+        isOpen={lightboxIndex >= 0}
+        images={lightboxImages}
+        currentIndex={Math.max(0, lightboxIndex)}
+        onChangeIndex={setLightboxIndex}
+        onClose={() => setLightboxIndex(-1)}
+      />
     </>
   );
 }

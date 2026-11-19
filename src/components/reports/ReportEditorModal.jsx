@@ -17,10 +17,13 @@ import {
   ChevronUp,
   CheckCircle2,
   RefreshCw,
-  Link2
+  Link2,
+  Download,
+  Share2
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
+import ImageLightboxModal from '../common/ImageLightboxModal';
 import ReportPrintView from './ReportPrintView';
 import {
   REPORT_RESULT_GUIDELINES,
@@ -29,6 +32,7 @@ import {
   MATURITY_LEVELS,
   ADHERENCE_RULES,
   PHOTO_SECTIONS,
+  CHECKLIST_TO_REPORT_PHOTO_SLOT,
   calculateAdherenceLevel,
   calculateConformityIndex,
   suggestMaturityLevel,
@@ -36,6 +40,12 @@ import {
   buildDefaultConclusionText
 } from '../../data/reportTemplateData';
 import { ReportService } from '../../supabase/reportService';
+import {
+  formatDateTimeWatermark,
+  exportCsvRows,
+  buildExecutiveSummaryText,
+  copyTextToClipboard
+} from '../../utils/kivoHelpers';
 
 export default function ReportEditorModal({
   report,
@@ -47,7 +57,7 @@ export default function ReportEditorModal({
   units = [],
   userProfile
 }) {
-  const { toast } = useFeedback();
+  const { toast, confirm } = useFeedback();
   const resumeStorageKey = report?.codigoRelatorio
     ? `kivo_resume_report_${report.codigoRelatorio}`
     : null;
@@ -76,6 +86,8 @@ export default function ReportEditorModal({
   const [autoSaveState, setAutoSaveState] = useState('idle'); // idle | saving | saved
   const [showPrintView, setShowPrintView] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
+  const [stampPhotos, setStampPhotos] = useState(true);
+  const [lightboxIndex, setLightboxIndex] = useState(-1);
 
   const latestDraftRef = useRef(report);
   const isDirtyRef = useRef(false);
@@ -238,7 +250,8 @@ export default function ReportEditorModal({
     if (!file) return;
     setUploadingKey('facade');
     try {
-      const url = await ReportService.uploadImage(file, draft.codigoRelatorio, 'fachada');
+      const stamp = stampPhotos ? formatDateTimeWatermark(draft.unidade) : '';
+      const url = await ReportService.uploadImage(file, draft.codigoRelatorio, 'fachada', stamp);
       updateField('fachadaUrl', url);
     } finally {
       setUploadingKey(null);
@@ -250,7 +263,8 @@ export default function ReportEditorModal({
     if (!file) return;
     setUploadingKey(`slot-${ordem}`);
     try {
-      const url = await ReportService.uploadImage(file, draft.codigoRelatorio, `item-${ordem}`);
+      const stamp = stampPhotos ? formatDateTimeWatermark(draft.unidade) : '';
+      const url = await ReportService.uploadImage(file, draft.codigoRelatorio, `item-${ordem}`, stamp);
       applyDraftUpdate(
         (prev) => ({
           ...prev,
@@ -304,6 +318,25 @@ export default function ReportEditorModal({
   };
 
   const handleSave = async (targetStatus) => {
+    if (targetStatus === 'finalizado') {
+      const current = latestDraftRef.current;
+      const missing = [];
+      if (!current.unidade?.trim()) missing.push('Unidade');
+      if (!current.responsavel?.trim()) missing.push('Responsável');
+      if (!current.conclusaoTexto?.trim()) missing.push('Texto de Conclusão');
+      if (missing.length > 0) {
+        const ok = await confirm({
+          title: 'Campos pendentes antes de finalizar',
+          message: `Os seguintes campos do relatório ainda estão vazios: ${missing.join(', ')}. Deseja finalizar mesmo assim?`,
+          detail: current.codigoRelatorio,
+          confirmLabel: 'Finalizar mesmo assim',
+          cancelLabel: 'Voltar e completar',
+          variant: 'warning'
+        });
+        if (!ok) return;
+      }
+    }
+
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -326,6 +359,44 @@ export default function ReportEditorModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCopySummary = async () => {
+    const text = buildExecutiveSummaryText({
+      code: draft.codigoRelatorio,
+      clientName: draft.clienteNome,
+      unitName: draft.unidade,
+      regional: draft.regional,
+      municipio: draft.cidade,
+      date: draft.dataHora ? new Date(draft.dataHora).toLocaleDateString('pt-BR') : '',
+      totalEvaluated: draft.itensAvaliados,
+      totalConformities: draft.conformidades,
+      conformityPercent: Number(draft.indiceConformidade || 0).toFixed(1),
+      adherenceLevel: draft.nivelAderencia || calculateAdherenceLevel(draft.indiceConformidade),
+      deviations: draft.desvios || []
+    });
+    await copyTextToClipboard(text);
+    toast.success({ title: 'Resumo copiado!', message: 'Pronto para colar no WhatsApp ou e-mail.' });
+  };
+
+  const handleExportDeviationsCsv = () => {
+    const list = draft.desvios || [];
+    if (list.length === 0) return;
+    exportCsvRows(
+      ['Nº', 'Descrição', 'Classificação', 'Severidade NC', 'Tratativa', 'Responsável', 'Prazo', 'Status'],
+      list.map((d, idx) => [
+        d.numero || idx + 1,
+        d.descricao || '',
+        d.classificacao || '',
+        d.severidadeNc || '',
+        d.tratativa || '',
+        d.responsavel || '',
+        d.prazo || '',
+        d.status || ''
+      ]),
+      `relatorio-desvios-${draft.codigoRelatorio}.csv`
+    );
+    toast.success({ title: 'Planilha exportada', message: `relatorio-desvios-${draft.codigoRelatorio}.csv` });
   };
 
   const handleCloseModal = async () => {
@@ -353,6 +424,47 @@ export default function ReportEditorModal({
   });
 
   const aderenciaAtual = draft.nivelAderencia || calculateAdherenceLevel(draft.indiceConformidade);
+
+  // Slots ligados a itens marcados como 'Não' no checklist vinculado (H1)
+  const deviationSlotOrders = React.useMemo(() => {
+    const set = new Set();
+    (linkedOrder?.checklist || []).forEach((it) => {
+      if (it.status === 'nao' || it.status === 'nao_conforme') {
+        const slot = CHECKLIST_TO_REPORT_PHOTO_SLOT[Number(it.number)];
+        if (slot) set.add(slot);
+      }
+    });
+    return set;
+  }, [linkedOrder]);
+
+  const lightboxImages = React.useMemo(() => {
+    const imgs = [];
+    if (draft.fachadaUrl) {
+      imgs.push({
+        key: 'facade',
+        url: draft.fachadaUrl,
+        title: 'Fachada da Unidade',
+        subtitle: draft.unidade || 'Capa do Relatório'
+      });
+    }
+    photos
+      .filter((p) => Boolean(p.fotoUrl))
+      .forEach((p) => {
+        imgs.push({
+          key: `slot-${p.ordem}`,
+          url: p.fotoUrl,
+          title: `Registro #${p.ordem} • ${p.secao}`,
+          subtitle: p.legenda,
+          observation: p.observacao
+        });
+      });
+    return imgs;
+  }, [draft.fachadaUrl, draft.unidade, photos]);
+
+  const openLightboxByKey = (key) => {
+    const idx = lightboxImages.findIndex((i) => i.key === key);
+    if (idx >= 0) setLightboxIndex(idx);
+  };
 
   return (
     <>
@@ -415,6 +527,16 @@ export default function ReportEditorModal({
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Finalizar Relatório
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#1C1D22] hover:bg-[#25272E] text-[#E4E4E7] border border-[#2D2F36] rounded-lg transition"
+                title="Copiar resumo executivo para WhatsApp / E-mail"
+              >
+                <Share2 className="w-3.5 h-3.5 text-[#34D399]" />
+                <span className="hidden lg:inline">Resumo</span>
               </button>
 
               <button
@@ -570,7 +692,16 @@ export default function ReportEditorModal({
                       Anexe as evidências fotográficas nos pontos correspondentes (apenas itens com foto são exibidos no PDF final).
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-[11px] text-[#A1A1AA] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={stampPhotos}
+                        onChange={(e) => setStampPhotos(e.target.checked)}
+                        className="accent-[#2EB88A]"
+                      />
+                      Estampar data/unidade
+                    </label>
                     <label className="flex items-center gap-1.5 text-[11px] text-[#A1A1AA] cursor-pointer">
                       <input
                         type="checkbox"
@@ -595,10 +726,17 @@ export default function ReportEditorModal({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredPhotos.map((slot) => (
                       <div key={slot.ordem} className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3 flex flex-col justify-between">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-[11px] font-semibold text-[#34D399] bg-[#122620] px-2 py-0.5 rounded border border-[#2EB88A]/30">
-                            Registro #{slot.ordem}
-                          </span>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-[11px] font-semibold text-[#34D399] bg-[#122620] px-2 py-0.5 rounded border border-[#2EB88A]/30">
+                              Registro #{slot.ordem}
+                            </span>
+                            {deviationSlotOrders.has(slot.ordem) && (
+                              <span className="text-[10px] font-medium bg-[#221216] text-[#FB7185] border border-[#F43F5E]/40 px-2 py-0.5 rounded">
+                                Desvio no Checklist
+                              </span>
+                            )}
+                          </div>
                           <label className="flex items-center gap-1.5 text-[11px] text-[#A1A1AA] cursor-pointer">
                             <input
                               type="checkbox"
@@ -617,7 +755,9 @@ export default function ReportEditorModal({
                               <img
                                 src={slot.fotoUrl}
                                 alt={slot.legenda}
-                                className="w-full h-40 object-cover rounded-lg border border-[#232429]"
+                                onClick={() => openLightboxByKey(`slot-${slot.ordem}`)}
+                                className="w-full h-40 object-cover rounded-lg border border-[#232429] cursor-pointer hover:opacity-90 transition"
+                                title="Clique para ampliar"
                               />
                               <div className="flex items-center justify-between text-[11px]">
                                 <label className="text-[#34D399] hover:underline cursor-pointer flex items-center gap-1">
@@ -639,19 +779,35 @@ export default function ReportEditorModal({
                               </div>
                             </div>
                           ) : (
-                            <label className="cursor-pointer flex flex-col items-center gap-2 text-center py-4">
+                            <div className="flex flex-col items-center gap-2.5 text-center py-3 w-full">
                               <Camera className="w-6 h-6 text-[#71717A]" />
                               <span className="text-xs text-[#A1A1AA] font-medium">
-                                {uploadingKey === `slot-${slot.ordem}` ? 'Enviando imagem...' : 'Clique para anexar imagem'}
+                                {uploadingKey === `slot-${slot.ordem}` ? 'Enviando imagem...' : 'Anexar fotografia'}
                               </span>
-                              <span className="text-[10px] text-[#71717A]">JPG, PNG ou captura de campo</span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => handleUploadPhotoSlot(slot.ordem, e)}
-                              />
-                            </label>
+                              <div className="flex items-center gap-2">
+                                <label className="px-2.5 py-1.5 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-lg text-[11px] text-[#F4F4F5] font-medium cursor-pointer transition flex items-center gap-1">
+                                  <Camera className="w-3 h-3 text-[#34D399]" />
+                                  Câmera
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                    onChange={(e) => handleUploadPhotoSlot(slot.ordem, e)}
+                                  />
+                                </label>
+                                <label className="px-2.5 py-1.5 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-lg text-[11px] text-[#F4F4F5] font-medium cursor-pointer transition flex items-center gap-1">
+                                  <Upload className="w-3 h-3 text-[#34D399]" />
+                                  Arquivo
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleUploadPhotoSlot(slot.ordem, e)}
+                                  />
+                                </label>
+                              </div>
+                            </div>
                           )}
                         </div>
 
@@ -833,7 +989,9 @@ export default function ReportEditorModal({
                             <img
                               src={draft.fachadaUrl}
                               alt="Fachada da Unidade"
-                              className="w-full h-44 object-cover rounded-lg border border-[#232429]"
+                              onClick={() => openLightboxByKey('facade')}
+                              className="w-full h-44 object-cover rounded-lg border border-[#232429] cursor-pointer hover:opacity-90 transition"
+                              title="Clique para ampliar"
                             />
                             <div className="flex items-center justify-between text-[11px]">
                               <label className="text-[#34D399] hover:underline cursor-pointer flex items-center gap-1">
@@ -1010,7 +1168,17 @@ export default function ReportEditorModal({
                         As alterações nesta tabela atualizam automaticamente os contadores da Capa e o Nível de Maturidade.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(draft.desvios || []).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleExportDeviationsCsv}
+                          className="px-3 py-1.5 bg-[#141518] border border-[#232429] rounded-lg text-xs text-[#E4E4E7] hover:text-[#F4F4F5] flex items-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5 text-[#34D399]" />
+                          Exportar CSV
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setShowTable03Rules(!showTable03Rules)}
@@ -1310,6 +1478,14 @@ export default function ReportEditorModal({
       {showPrintView && (
         <ReportPrintView report={draft} onClose={() => setShowPrintView(false)} />
       )}
+
+      <ImageLightboxModal
+        isOpen={lightboxIndex >= 0}
+        images={lightboxImages}
+        currentIndex={Math.max(0, lightboxIndex)}
+        onChangeIndex={setLightboxIndex}
+        onClose={() => setLightboxIndex(-1)}
+      />
     </>
   );
 }

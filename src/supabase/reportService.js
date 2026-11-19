@@ -288,8 +288,8 @@ export const ReportService = {
     };
   },
 
-  async uploadImage(file, codigoRelatorio, prefix = 'foto') {
-    const compressedDataUrl = await compressImageToDataUrl(file);
+  async uploadImage(file, codigoRelatorio, prefix = 'foto', stampText = '') {
+    const compressedDataUrl = await compressImageToDataUrl(file, 1280, 0.78, stampText);
     if (!isSupabaseConfigured() || navigator.onLine === false) {
       return compressedDataUrl;
     }

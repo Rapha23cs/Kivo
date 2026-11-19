@@ -25,7 +25,7 @@ function normalizeChecklistStatus(item) {
   return null;
 }
 
-export function compressImageToDataUrl(file, maxWidth = 1280, quality = 0.78) {
+export function compressImageToDataUrl(file, maxWidth = 1280, quality = 0.78, stampText = '') {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
@@ -39,6 +39,21 @@ export function compressImageToDataUrl(file, maxWidth = 1280, quality = 0.78) {
         canvas.height = Math.round(img.height * scale);
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        if (stampText) {
+          const fontSize = Math.max(12, Math.round(canvas.width * 0.018));
+          const paddingX = Math.round(fontSize * 0.8);
+          const barHeight = Math.round(fontSize * 1.9);
+          ctx.fillStyle = 'rgba(11, 11, 13, 0.72)';
+          ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+          ctx.fillStyle = '#34D399';
+          ctx.fillRect(0, canvas.height - barHeight, 4, barHeight);
+          ctx.font = `600 ${fontSize}px sans-serif`;
+          ctx.fillStyle = '#F4F4F5';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(stampText, paddingX + 4, canvas.height - barHeight / 2, canvas.width - paddingX * 2);
+        }
+
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
       img.src = ev.target.result;
@@ -766,8 +781,8 @@ export const DataService = {
     return this.saveOrder(newOrder, onSynced);
   },
 
-  async uploadChecklistEvidence(file, orderId, itemId) {
-    const compressedDataUrl = await compressImageToDataUrl(file);
+  async uploadChecklistEvidence(file, orderId, itemId, stampText = '') {
+    const compressedDataUrl = await compressImageToDataUrl(file, 1280, 0.78, stampText);
     if (!isSupabaseConfigured() || navigator.onLine === false) {
       return compressedDataUrl;
     }

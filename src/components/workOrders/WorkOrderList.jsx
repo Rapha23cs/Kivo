@@ -15,23 +15,47 @@ import {
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
+import { ORDER_STATUS_META, getOrderStatusMeta } from '../../utils/kivoHelpers';
 
 export default function WorkOrderList({
   orders,
   onOpenOrder,
   onNewOrder,
-  onDeleteOrder
+  onDeleteOrder,
+  onUpdateOrderStatus,
+  onRestoreOrder
 }) {
   const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [inspectionTypeFilter, setInspectionTypeFilter] = useState('all');
   const [viewMode, setViewMode] = useState('list');
+  const [draggingOrderId, setDraggingOrderId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
 
-  const statusBadges = {
-    open: { variant: 'info', label: 'Aberta' },
-    in_progress: { variant: 'primary', label: 'Em Andamento' },
-    completed: { variant: 'success', label: 'Concluída' }
+  const statusBadges = ORDER_STATUS_META;
+
+  const handleDeleteWithUndo = async (order) => {
+    const ok = await confirm({
+      title: 'Excluir inspeção',
+      message: 'Deseja excluir esta inspeção e todas as respostas registradas no checklist? Você poderá desfazer logo após pela notificação.',
+      detail: `${order.id} • ${order.hospitalName}`,
+      confirmLabel: 'Excluir Inspeção',
+      variant: 'danger'
+    });
+    if (!ok) return;
+    await onDeleteOrder(order);
+    toast.success({
+      title: 'Inspeção excluída',
+      message: `${order.id} foi removida.`,
+      duration: 6000,
+      action: onRestoreOrder
+        ? {
+            label: 'Desfazer',
+            onClick: () => onRestoreOrder(order)
+          }
+        : undefined
+    });
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -114,7 +138,7 @@ export default function WorkOrderList({
               className="bg-transparent text-[#E4E4E7] focus:outline-none cursor-pointer"
             >
               <option value="all" className="bg-[#141518] text-[#F4F4F5]">Todos os Status</option>
-              <option value="open" className="bg-[#141518] text-[#F4F4F5]">Abertas</option>
+              <option value="open" className="bg-[#141518] text-[#F4F4F5]">Agendadas</option>
               <option value="in_progress" className="bg-[#141518] text-[#F4F4F5]">Em Andamento</option>
               <option value="completed" className="bg-[#141518] text-[#F4F4F5]">Concluídas</option>
             </select>
@@ -171,8 +195,8 @@ export default function WorkOrderList({
                           </span>
                         )}
                       </div>
-                      <Badge variant={statusBadges[order.status]?.variant || 'neutral'} size="sm">
-                        {statusBadges[order.status]?.label || order.status}
+                      <Badge variant={getOrderStatusMeta(order.status).variant} size="sm">
+                        {getOrderStatusMeta(order.status).label}
                       </Badge>
                     </div>
 
@@ -213,22 +237,9 @@ export default function WorkOrderList({
                       {onDeleteOrder && (
                         <button
                           type="button"
-                          onClick={async (e) => {
+                          onClick={(e) => {
                             e.stopPropagation();
-                            const ok = await confirm({
-                              title: 'Excluir inspeção',
-                              message: 'Deseja excluir esta inspeção e todas as respostas registradas no checklist? Essa ação não pode ser desfeita.',
-                              detail: `${order.id} • ${order.hospitalName}`,
-                              confirmLabel: 'Excluir Inspeção',
-                              variant: 'danger'
-                            });
-                            if (ok) {
-                              await onDeleteOrder(order);
-                              toast.success({
-                                title: 'Inspeção excluída',
-                                message: `${order.id} foi removida.`
-                              });
-                            }
+                            handleDeleteWithUndo(order);
                           }}
                           className="p-2 text-[#71717A] hover:text-[#FB7185] rounded-lg hover:bg-[#221216] transition shrink-0"
                           title="Excluir Inspeção"
@@ -349,22 +360,9 @@ export default function WorkOrderList({
                             {onDeleteOrder && (
                               <button
                                 type="button"
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  const ok = await confirm({
-                                    title: 'Excluir inspeção',
-                                    message: 'Deseja excluir esta inspeção e todas as respostas registradas no checklist? Essa ação não pode ser desfeita.',
-                                    detail: `${order.id} • ${order.hospitalName}`,
-                                    confirmLabel: 'Excluir Inspeção',
-                                    variant: 'danger'
-                                  });
-                                  if (ok) {
-                                    await onDeleteOrder(order);
-                                    toast.success({
-                                      title: 'Inspeção excluída',
-                                      message: `${order.id} foi removida.`
-                                    });
-                                  }
+                                  handleDeleteWithUndo(order);
                                 }}
                                 className="p-1.5 text-[#71717A] hover:text-[#FB7185] rounded-lg hover:bg-[#221216] transition"
                                 title="Excluir Inspeção"
@@ -385,13 +383,37 @@ export default function WorkOrderList({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { key: 'open', label: 'Abertas', dot: 'bg-[#71717A]' },
+            { key: 'open', label: 'Agendadas', dot: 'bg-[#71717A]' },
             { key: 'in_progress', label: 'Em Andamento', dot: 'bg-[#2EB88A]' },
             { key: 'completed', label: 'Concluídas', dot: 'bg-[#34D399]' }
           ].map((col) => {
             const colOrders = filteredOrders.filter((o) => o.status === col.key);
+            const isOver = dragOverCol === col.key;
             return (
-              <div key={col.key} className="bg-[#141518] border border-[#232429] rounded-xl p-3.5 flex flex-col space-y-3">
+              <div
+                key={col.key}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(col.key);
+                }}
+                onDragLeave={() => setDragOverCol(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(null);
+                  const ord = orders.find((o) => o.id === draggingOrderId);
+                  setDraggingOrderId(null);
+                  if (ord && ord.status !== col.key && onUpdateOrderStatus) {
+                    onUpdateOrderStatus(ord, col.key);
+                    toast.success({
+                      title: 'Status atualizado',
+                      message: `${ord.id} movida para ${col.label}.`
+                    });
+                  }
+                }}
+                className={`bg-[#141518] border rounded-xl p-3.5 flex flex-col space-y-3 transition ${
+                  isOver ? 'border-[#2EB88A] bg-[#141D1A]' : 'border-[#232429]'
+                }`}
+              >
                 <div className="flex items-center justify-between border-b border-[#232429] pb-2">
                   <span className="font-semibold text-xs uppercase tracking-wider text-[#A1A1AA] flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
@@ -407,6 +429,12 @@ export default function WorkOrderList({
                     return (
                       <div
                         key={order.id}
+                        draggable={Boolean(onUpdateOrderStatus)}
+                        onDragStart={() => setDraggingOrderId(order.id)}
+                        onDragEnd={() => {
+                          setDraggingOrderId(null);
+                          setDragOverCol(null);
+                        }}
                         onClick={() => onOpenOrder(order)}
                         className="bg-[#0E0F12] border border-[#232429] hover:border-[#32343C] p-3.5 rounded-lg cursor-pointer transition space-y-2"
                       >
@@ -421,9 +449,28 @@ export default function WorkOrderList({
                         <p className="text-[11px] text-[#71717A] truncate">
                           {order.clientName || 'Cliente'} • {order.regional} • {order.municipio}
                         </p>
-                        <div className="flex items-center justify-between pt-2 border-t border-[#232429] text-[11px] text-[#71717A]">
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#232429] text-[11px] text-[#71717A]">
                           <span className="font-mono">{order.scheduledDate}</span>
-                          {col.key === 'completed' ? (
+                          {onUpdateOrderStatus ? (
+                            <select
+                              value={order.status}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                const nextSt = e.target.value;
+                                onUpdateOrderStatus(order, nextSt);
+                                toast.success({
+                                  title: 'Status atualizado',
+                                  message: `${order.id} → ${getOrderStatusMeta(nextSt).label}`
+                                });
+                              }}
+                              className="bg-[#141518] border border-[#27282E] rounded px-1.5 py-0.5 text-[10px] text-[#E4E4E7] focus:outline-none"
+                            >
+                              <option value="open">Agendada</option>
+                              <option value="in_progress">Em Andamento</option>
+                              <option value="completed">Concluída</option>
+                            </select>
+                          ) : col.key === 'completed' ? (
                             <span className="flex items-center gap-1 text-[#34D399]">
                               <CheckCircle2 className="w-3 h-3" /> Concluída
                             </span>

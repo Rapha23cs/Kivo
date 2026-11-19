@@ -11,9 +11,13 @@ import {
   AlertOctagon,
   CheckCircle2,
   Award,
-  X
+  X,
+  BarChart3,
+  ShieldAlert
 } from 'lucide-react';
-import { calculateInspectionSummary } from '../../data/emserhChecklistData';
+import { calculateInspectionSummary, calculateTopicBreakdown, EMSERH_TOPICS } from '../../data/emserhChecklistData';
+import { getOrderStatusMeta } from '../../utils/kivoHelpers';
+import Badge from '../common/Badge';
 
 export default function DashboardOverview({
   orders = [],
@@ -65,6 +69,47 @@ export default function DashboardOverview({
 
   const conformityPercentage = totalAvaliados > 0 ? Math.round((totalSim / totalAvaliados) * 100) : 0;
   const finalizedReports = reports.filter((r) => r.status === 'finalizado').length;
+
+  // Agregação por Temática (11 áreas) e lista de desvios prioritários (Crítico / Grave)
+  const topicRanking = React.useMemo(() => {
+    const acc = {};
+    EMSERH_TOPICS.forEach((t) => {
+      acc[t] = { topic: t, sim: 0, nao: 0, avaliados: 0 };
+    });
+    orders.forEach((o) => {
+      const tb = calculateTopicBreakdown(o.checklist || []);
+      Object.values(tb).forEach((entry) => {
+        if (!acc[entry.topic]) return;
+        acc[entry.topic].sim += entry.sim;
+        acc[entry.topic].nao += entry.nao;
+        acc[entry.topic].avaliados += entry.totalAvaliados;
+      });
+    });
+    return Object.values(acc)
+      .filter((t) => t.avaliados > 0)
+      .map((t) => ({
+        ...t,
+        percent: t.avaliados > 0 ? Math.round((t.sim / t.avaliados) * 100) : 100
+      }))
+      .sort((a, b) => b.nao - a.nao || a.percent - b.percent);
+  }, [orders]);
+
+  const priorityDeviations = React.useMemo(() => {
+    const rank = { 'Crítico': 4, 'Grave': 3, 'Médio': 2, 'Leve': 1 };
+    const list = [];
+    orders.forEach((o) => {
+      (o.checklist || []).forEach((item) => {
+        if (item.status === 'nao' || item.status === 'nao_conforme') {
+          list.push({
+            order: o,
+            item,
+            weight: rank[item.classification] || 0
+          });
+        }
+      });
+    });
+    return list.sort((a, b) => b.weight - a.weight).slice(0, 5);
+  }, [orders]);
 
   return (
     <div className="space-y-6">
@@ -300,15 +345,9 @@ export default function DashboardOverview({
                       <span className="text-xs font-mono font-semibold text-[#34D399]">
                         {s.percentualConformidade}%
                       </span>
-                      <span
-                        className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 border ${
-                          order.status === 'completed'
-                            ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30'
-                            : 'bg-[#1A1C21] text-[#F4F4F5] border-[#2D2F36]'
-                        }`}
-                      >
-                        {order.status === 'completed' ? 'Concluída' : 'Em Andamento'}
-                      </span>
+                      <Badge variant={getOrderStatusMeta(order.status).variant} size="sm">
+                        {getOrderStatusMeta(order.status).label}
+                      </Badge>
                     </div>
                   </div>
                 );
@@ -366,6 +405,104 @@ export default function DashboardOverview({
           )}
         </div>
       </div>
+
+      {/* Painéis Analíticos Visuais (Conformidade por Temática + Desvios Prioritários) */}
+      {(topicRanking.length > 0 || priorityDeviations.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Temáticas com maior incidência de desvios */}
+          <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-[#34D399]" />
+                <h3 className="font-semibold text-[#F4F4F5] text-sm">Desempenho por Temática</h3>
+              </div>
+              <span className="text-[11px] text-[#71717A]">
+                {topicRanking.length} área(s) avaliada(s)
+              </span>
+            </div>
+
+            {topicRanking.length === 0 ? (
+              <p className="text-xs text-[#71717A] py-6 text-center">
+                Avalie itens nos checklists para visualizar o gráfico de conformidade por área.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {topicRanking.slice(0, 6).map((t) => (
+                  <div key={t.topic} className="space-y-1 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[#E4E4E7] truncate font-medium">{t.topic}</span>
+                      <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                        {t.nao > 0 && (
+                          <span className="text-[#FB7185]">{t.nao} desvio(s)</span>
+                        )}
+                        <span className={t.percent >= 80 ? 'text-[#34D399] font-semibold' : 'text-[#F4F4F5] font-semibold'}>
+                          {t.percent}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full h-2 bg-[#0D0E10] rounded-full overflow-hidden border border-[#232429]">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          t.percent >= 85 ? 'bg-[#2EB88A]' : t.percent >= 70 ? 'bg-[#F59E0B]' : 'bg-[#F43F5E]'
+                        }`}
+                        style={{ width: `${t.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Desvios Prioritários para Ação */}
+          <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-[#FB7185]" />
+                <h3 className="font-semibold text-[#F4F4F5] text-sm">Desvios Prioritários em Aberto</h3>
+              </div>
+              <span className="text-[11px] font-mono text-[#FB7185]">
+                {totalDesvios} total
+              </span>
+            </div>
+
+            {priorityDeviations.length === 0 ? (
+              <div className="p-6 text-center text-xs text-[#71717A] border border-dashed border-[#232429] rounded-lg">
+                Nenhum desvio crítico ou não conformidade registrada nos checklists ativos.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {priorityDeviations.map(({ order, item }, idx) => (
+                  <button
+                    key={`${order.id}-${item.id || idx}`}
+                    type="button"
+                    onClick={() => onOpenOrder(order)}
+                    className="w-full text-left bg-[#0E0F12] hover:bg-[#18191D] border border-[#232429] hover:border-[#F43F5E]/40 rounded-lg p-3 transition space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase border ${
+                          item.classification === 'Crítico' || item.classification === 'Grave'
+                            ? 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/40'
+                            : 'bg-[#1A1B20] text-[#E4E4E7] border-[#2D2F36]'
+                        }`}
+                      >
+                        {item.classification || 'Desvio'}
+                      </span>
+                      <span className="font-mono text-[10px] text-[#71717A] truncate">
+                        {order.hospitalName} • Prazo: {item.deadline || 'A definir'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#F4F4F5] line-clamp-1 font-medium">
+                      #{item.number} — {item.observation || item.question}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

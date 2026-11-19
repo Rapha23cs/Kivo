@@ -15,6 +15,8 @@ import { ReportService } from './supabase/reportService';
 import { OfflineStore } from './offline/offlineStore';
 import { SyncEngine } from './offline/syncEngine';
 import { useFeedback } from './components/common/FeedbackProvider';
+import { AppLoadingSkeleton } from './components/common/SkeletonLoader';
+import CommandPaletteModal from './components/common/CommandPaletteModal';
 
 export default function App() {
   const { toast } = useFeedback();
@@ -37,6 +39,18 @@ export default function App() {
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
   const [pendingSyncCount, setPendingSyncCount] = useState(() => OfflineStore.getPendingCount());
   const [isSyncing, setIsSyncing] = useState(false);
@@ -222,11 +236,7 @@ export default function App() {
   }, [clients, units, orders, reports]);
 
   if (supabaseEnabled && !authChecked) {
-    return (
-      <div className="min-h-screen bg-[#0B0B0D] text-[#A1A1AA] flex items-center justify-center text-xs font-sans">
-        Carregando...
-      </div>
-    );
+    return <AppLoadingSkeleton />;
   }
 
   if (supabaseEnabled && recoveryMode) {
@@ -315,6 +325,33 @@ export default function App() {
     }
   };
 
+  const findPreviousOrderForUnit = (order) => {
+    if (!order) return null;
+    const sameUnit = orders.filter(
+      (o) =>
+        o.id !== order.id &&
+        ((order.unidadeId && o.unidadeId === order.unidadeId) ||
+          (o.hospitalName || '').toLowerCase() === (order.hospitalName || '').toLowerCase())
+    );
+    return sameUnit[0] || null;
+  };
+
+  const handleUpdateOrderStatus = (order, nextStatus) => {
+    const updated = { ...order, status: nextStatus };
+    const updatedList = DataService.saveOrder(updated, (syncedId, patchedOrders) => {
+      setOrders(patchedOrders);
+    });
+    setOrders(updatedList);
+  };
+
+  const handleRestoreOrder = (order) => {
+    const restoredList = DataService.saveOrder(order, (_syncedId, patchedOrders) => {
+      setOrders(patchedOrders);
+    });
+    setOrders(restoredList);
+    toast.success({ title: 'Inspeção restaurada', message: order.id });
+  };
+
   const openOrdersCount = orders.filter((o) => o.status === 'open' || o.status === 'in_progress').length;
 
   return (
@@ -345,6 +382,7 @@ export default function App() {
           onOpenNewOrder={() => setIsNewOrderModalOpen(true)}
           onOpenProfile={() => setIsProfileModalOpen(true)}
           onOpenMenu={() => setIsMobileMenuOpen(true)}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           userProfile={userProfile}
           isOnline={isOnline}
           pendingSyncCount={pendingSyncCount}
@@ -379,6 +417,8 @@ export default function App() {
                   setIsNewOrderModalOpen(true);
                 }}
                 onDeleteOrder={handleDeleteOrder}
+                onUpdateOrderStatus={handleUpdateOrderStatus}
+                onRestoreOrder={handleRestoreOrder}
               />
             )}
 
@@ -439,6 +479,7 @@ export default function App() {
           onClose={() => setSelectedOrder(null)}
           onUpdateOrder={handleUpdateOrder}
           linkedReport={findReportForOrder(selectedOrder)}
+          previousOrder={findPreviousOrderForUnit(selectedOrder)}
           onOpenTechnicalReport={handleOpenTechnicalReportFromOrder}
         />
       )}
@@ -477,6 +518,25 @@ export default function App() {
           }}
         />
       )}
+
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        orders={orders}
+        reports={reports}
+        units={units}
+        onSelectOrder={(ord) => setSelectedOrder(ord)}
+        onSelectReport={(rep) => {
+          setActiveTab('reports');
+          setPendingReportToOpen(rep);
+        }}
+        onNavigateTab={setActiveTab}
+        onNewOrder={() => {
+          setPreselectedUnitForNewOrder(null);
+          setIsNewOrderModalOpen(true);
+        }}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
+      />
     </div>
   );
 }

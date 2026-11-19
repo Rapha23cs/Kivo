@@ -143,6 +143,18 @@ export function FeedbackProvider({ children }) {
                       {t.message}
                     </p>
                   )}
+                  {t.action?.label && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        t.action.onClick?.();
+                        dismissToast(t.id);
+                      }}
+                      className="mt-1.5 inline-flex items-center px-2.5 py-1 rounded-md bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/40 font-semibold text-[11px] transition"
+                    >
+                      {t.action.label}
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"

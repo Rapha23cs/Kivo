@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Plus, Menu, WifiOff, RefreshCw, Cloud } from 'lucide-react';
+import { Building2, Plus, Menu, WifiOff, RefreshCw, Cloud, Search } from 'lucide-react';
 
 export default function Header({
   clientNames = [],
@@ -8,6 +8,7 @@ export default function Header({
   onOpenNewOrder,
   onOpenProfile,
   onOpenMenu,
+  onOpenCommandPalette,
   userProfile,
   isOnline = true,
   pendingSyncCount = 0,
@@ -44,6 +45,21 @@ export default function Header({
             ))}
           </select>
         </div>
+
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-[#141518] hover:bg-[#1C1D22] border border-[#232429] rounded-lg text-xs text-[#71717A] hover:text-[#F4F4F5] transition shrink-0"
+            title="Busca rápida global (Ctrl + K)"
+          >
+            <Search className="w-3.5 h-3.5 text-[#34D399]" />
+            <span className="hidden md:inline">Buscar...</span>
+            <kbd className="hidden lg:inline font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#0D0E10] border border-[#27282E] text-[#A1A1AA]">
+              Ctrl K
+            </kbd>
+          </button>
+        )}
       </div>
 
       {/* Controles à direita */}
