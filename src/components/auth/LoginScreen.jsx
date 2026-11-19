@@ -19,6 +19,7 @@ import {
   FileCheck2
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
+import LegalInfoModal from '../common/LegalInfoModal';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -81,6 +82,7 @@ export default function LoginScreen({ onLoginSuccess, initialMode = 'login', onR
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'error' | 'success', text, needsConfirmation }
+  const [legalTab, setLegalTab] = useState(null);
 
   useEffect(() => {
     if (initialMode === 'recovery') {
@@ -646,11 +648,43 @@ export default function LoginScreen({ onLoginSuccess, initialMode = 'login', onR
                 .
               </>
             )}
-            {mode === 'signup' && 'Suas inspeções ficam vinculadas apenas ao seu usuário.'}
+            {mode === 'signup' && 'Ao criar sua conta, você concorda com os Termos de Uso e Política de Privacidade. Suas inspeções ficam vinculadas apenas ao seu usuário.'}
             {mode === 'forgot' && 'Caso o e-mail não chegue em 2 minutos, verifique a pasta de spam.'}
           </p>
+
+          <div className="flex items-center justify-center gap-3 text-[11px] text-[#71717A] pt-1">
+            <button
+              type="button"
+              onClick={() => setLegalTab('privacidade')}
+              className="hover:text-[#D4D4D8] transition underline-offset-2 hover:underline"
+            >
+              Privacidade
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setLegalTab('termos')}
+              className="hover:text-[#D4D4D8] transition underline-offset-2 hover:underline"
+            >
+              Termos de Uso
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setLegalTab('suporte')}
+              className="hover:text-[#D4D4D8] transition underline-offset-2 hover:underline"
+            >
+              Suporte
+            </button>
+          </div>
         </div>
       </main>
+
+      <LegalInfoModal
+        isOpen={Boolean(legalTab)}
+        initialTab={legalTab || 'privacidade'}
+        onClose={() => setLegalTab(null)}
+      />
     </div>
   );
 }

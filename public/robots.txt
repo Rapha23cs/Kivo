@@ -1,0 +1,4 @@
+# Kivo — Aplicação privada autenticada
+# Impede indexação automática das telas internas por buscadores
+User-agent: *
+Disallow: /

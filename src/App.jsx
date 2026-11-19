@@ -17,15 +17,63 @@ import { SyncEngine } from './offline/syncEngine';
 import { useFeedback } from './components/common/FeedbackProvider';
 import { AppLoadingSkeleton } from './components/common/SkeletonLoader';
 import CommandPaletteModal from './components/common/CommandPaletteModal';
+import NotFoundPage from './components/common/NotFoundPage';
+import LegalInfoModal from './components/common/LegalInfoModal';
+
+const TAB_TITLES = {
+  dashboard: 'Kivo — Meu Painel',
+  orders: 'Kivo — Vistorias & Checklists',
+  reports: 'Kivo — Relatórios Técnicos',
+  units: 'Kivo — Clientes & Unidades'
+};
+
+function resolveInitialRoute() {
+  if (typeof window === 'undefined') {
+    return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: false };
+  }
+  const path = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+  const hasAuthCallback =
+    window.location.hash.includes('access_token=') ||
+    window.location.hash.includes('type=recovery') ||
+    window.location.search.includes('code=') ||
+    window.location.search.includes('error=');
+
+  if (hasAuthCallback || path === '/' || path === '/index.html' || path === '/painel' || path === '/dashboard') {
+    return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: false };
+  }
+  if (path === '/vistorias') {
+    return { initialTab: 'orders', initialLegalTab: null, initialNotFound: false };
+  }
+  if (path === '/relatorios') {
+    return { initialTab: 'reports', initialLegalTab: null, initialNotFound: false };
+  }
+  if (path === '/unidades') {
+    return { initialTab: 'units', initialLegalTab: null, initialNotFound: false };
+  }
+  if (path === '/privacidade') {
+    return { initialTab: 'dashboard', initialLegalTab: 'privacidade', initialNotFound: false };
+  }
+  if (path === '/termos') {
+    return { initialTab: 'dashboard', initialLegalTab: 'termos', initialNotFound: false };
+  }
+  if (path === '/suporte') {
+    return { initialTab: 'dashboard', initialLegalTab: 'suporte', initialNotFound: false };
+  }
+
+  return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: true };
+}
 
 export default function App() {
+  const initialRoute = useMemo(() => resolveInitialRoute(), []);
   const { toast } = useFeedback();
   const supabaseEnabled = isSupabaseConfigured();
   const [authChecked, setAuthChecked] = useState(!supabaseEnabled);
   const [session, setSession] = useState(null);
   const [recoveryMode, setRecoveryMode] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(initialRoute.initialTab);
+  const [isNotFound, setIsNotFound] = useState(initialRoute.initialNotFound);
+  const [legalModalTab, setLegalModalTab] = useState(initialRoute.initialLegalTab);
   const [userProfile, setUserProfile] = useState(null);
   const [orders, setOrders] = useState([]);
   const [reports, setReports] = useState([]);
@@ -235,8 +283,40 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [clients, units, orders, reports]);
 
+  useEffect(() => {
+    if (isNotFound) {
+      document.title = 'Kivo — Página não encontrada (404)';
+      return;
+    }
+    if (supabaseEnabled && recoveryMode) {
+      document.title = 'Kivo — Redefinir Senha';
+      return;
+    }
+    if (supabaseEnabled && !session) {
+      document.title = 'Kivo — Acesso à Conta';
+      return;
+    }
+    document.title = TAB_TITLES[activeTab] || 'Kivo — Inspeções & Relatórios Ambientais';
+  }, [isNotFound, supabaseEnabled, recoveryMode, session, activeTab]);
+
   if (supabaseEnabled && !authChecked) {
     return <AppLoadingSkeleton />;
+  }
+
+  if (isNotFound) {
+    return (
+      <NotFoundPage
+        pathname={typeof window !== 'undefined' ? window.location.pathname : ''}
+        isAuthenticated={!supabaseEnabled || Boolean(session)}
+        onGoHome={() => {
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, '', '/');
+          }
+          setIsNotFound(false);
+          setActiveTab('dashboard');
+        }}
+      />
+    );
   }
 
   if (supabaseEnabled && recoveryMode) {
@@ -253,14 +333,28 @@ export default function App() {
 
   if (supabaseEnabled && !session) {
     return (
-      <LoginScreen
-        onLoginSuccess={(nextSession) => {
-          if (nextSession?.user) {
-            DataService.syncSessionUser(nextSession.user);
-          }
-          setSession(nextSession);
-        }}
-      />
+      <>
+        <LoginScreen
+          onLoginSuccess={(nextSession) => {
+            if (nextSession?.user) {
+              DataService.syncSessionUser(nextSession.user);
+            }
+            setSession(nextSession);
+          }}
+        />
+        {legalModalTab && (
+          <LegalInfoModal
+            isOpen={Boolean(legalModalTab)}
+            initialTab={legalModalTab}
+            onClose={() => {
+              setLegalModalTab(null);
+              if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
+                window.history.replaceState({}, '', '/');
+              }
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -370,6 +464,7 @@ export default function App() {
         unitsCount={units.length}
         userProfile={userProfile}
         onSignOut={supabaseEnabled ? handleSignOut : null}
+        onOpenLegalModal={(tab) => setLegalModalTab(tab)}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
       />
@@ -536,6 +631,17 @@ export default function App() {
           setIsNewOrderModalOpen(true);
         }}
         onOpenProfile={() => setIsProfileModalOpen(true)}
+      />
+
+      <LegalInfoModal
+        isOpen={Boolean(legalModalTab)}
+        initialTab={legalModalTab || 'privacidade'}
+        onClose={() => {
+          setLegalModalTab(null);
+          if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
+            window.history.replaceState({}, '', '/');
+          }
+        }}
       />
     </div>
   );

@@ -18,6 +18,7 @@ export default function Sidebar({
   unitsCount = 0,
   userProfile,
   onSignOut,
+  onOpenLegalModal,
   isOpen = false,
   onClose
 }) {
@@ -177,6 +178,34 @@ export default function Sidebar({
             </button>
           )}
         </div>
+
+        {onOpenLegalModal && (
+          <div className="flex items-center justify-center gap-2 text-[10px] text-[#71717A] pt-0.5">
+            <button
+              type="button"
+              onClick={() => onOpenLegalModal('privacidade')}
+              className="hover:text-[#D4D4D8] transition"
+            >
+              Privacidade
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => onOpenLegalModal('termos')}
+              className="hover:text-[#D4D4D8] transition"
+            >
+              Termos
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => onOpenLegalModal('suporte')}
+              className="hover:text-[#D4D4D8] transition"
+            >
+              Suporte
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
