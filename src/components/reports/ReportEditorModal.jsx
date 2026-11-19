@@ -20,6 +20,7 @@ import {
   Link2
 } from 'lucide-react';
 import Badge from '../common/Badge';
+import { useFeedback } from '../common/FeedbackProvider';
 import ReportPrintView from './ReportPrintView';
 import {
   REPORT_RESULT_GUIDELINES,
@@ -46,6 +47,7 @@ export default function ReportEditorModal({
   units = [],
   userProfile
 }) {
+  const { toast } = useFeedback();
   const resumeStorageKey = report?.codigoRelatorio
     ? `kivo_resume_report_${report.codigoRelatorio}`
     : null;
@@ -317,6 +319,10 @@ export default function ReportEditorModal({
       isDirtyRef.current = false;
       setDraft(payload);
       setAutoSaveState('saved');
+      toast.success({
+        title: payload.status === 'finalizado' ? 'Relatório finalizado' : 'Rascunho salvo',
+        message: `${payload.codigoRelatorio}${payload.unidade ? ` • ${payload.unidade}` : ''}`
+      });
     } finally {
       setSaving(false);
     }

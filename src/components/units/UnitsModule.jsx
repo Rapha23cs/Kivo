@@ -17,6 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import Badge from '../common/Badge';
+import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 
 const UNIT_TYPES = [
@@ -58,6 +59,7 @@ export default function UnitsModule({
   onOpenOrder,
   onNavigateTab
 }) {
+  const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [editingUnit, setEditingUnit] = useState(null);
@@ -117,10 +119,16 @@ export default function UnitsModule({
     e.preventDefault();
     setSavingUnit(true);
     try {
+      const isEdit = Boolean(editingUnit?.id);
+      const savedName = editingUnit?.nome;
       await onSaveUnit(editingUnit);
       setEditingUnit(null);
+      toast.success({
+        title: isEdit ? 'Unidade atualizada' : 'Unidade cadastrada',
+        message: savedName
+      });
     } catch (err) {
-      alert(err.message);
+      toast.error({ title: 'Não foi possível salvar a unidade', message: err.message });
     } finally {
       setSavingUnit(false);
     }
@@ -130,10 +138,16 @@ export default function UnitsModule({
     e.preventDefault();
     setSavingClient(true);
     try {
+      const isEdit = Boolean(newClientForm?.id);
+      const savedName = newClientForm?.nome;
       await onSaveClient(newClientForm);
       setNewClientForm({ id: null, nome: '', codigo: '', segmento: 'Hospitalar / Saúde' });
+      toast.success({
+        title: isEdit ? 'Cliente atualizado' : 'Cliente adicionado',
+        message: savedName
+      });
     } catch (err) {
-      alert(err.message);
+      toast.error({ title: 'Não foi possível salvar o cliente', message: err.message });
     } finally {
       setSavingClient(false);
     }
@@ -298,9 +312,20 @@ export default function UnitsModule({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm(`Deseja excluir a unidade "${unit.nome}"?`)) {
-                            onDeleteUnit(unit);
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: 'Excluir unidade',
+                            message: 'Deseja remover esta unidade do seu catálogo? As vistorias e relatórios já emitidos serão mantidos.',
+                            detail: `${unit.nome}${unit.clienteNome ? ` • ${unit.clienteNome}` : ''}`,
+                            confirmLabel: 'Excluir Unidade',
+                            variant: 'danger'
+                          });
+                          if (ok) {
+                            await onDeleteUnit(unit);
+                            toast.success({
+                              title: 'Unidade removida',
+                              message: unit.nome
+                            });
                           }
                         }}
                         className="p-1.5 text-[#71717A] hover:text-[#FB7185] hover:bg-[#221216] rounded-lg transition"
@@ -637,9 +662,20 @@ export default function UnitsModule({
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm(`Remover cliente "${c.nome}"?`)) {
-                              onDeleteClient(c);
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: 'Remover cliente',
+                              message: 'Deseja remover este cliente da sua carteira?',
+                              detail: c.nome,
+                              confirmLabel: 'Remover Cliente',
+                              variant: 'danger'
+                            });
+                            if (ok) {
+                              await onDeleteClient(c);
+                              toast.success({
+                                title: 'Cliente removido',
+                                message: c.nome
+                              });
                             }
                           }}
                           className="p-1.5 text-[#71717A] hover:text-[#FB7185] rounded hover:bg-[#221216]"

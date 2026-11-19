@@ -14,8 +14,10 @@ import { DataService } from './supabase/dataService';
 import { ReportService } from './supabase/reportService';
 import { OfflineStore } from './offline/offlineStore';
 import { SyncEngine } from './offline/syncEngine';
+import { useFeedback } from './components/common/FeedbackProvider';
 
 export default function App() {
+  const { toast } = useFeedback();
   const supabaseEnabled = isSupabaseConfigured();
   const [authChecked, setAuthChecked] = useState(!supabaseEnabled);
   const [session, setSession] = useState(null);
@@ -50,6 +52,12 @@ export default function App() {
       if (result.units) setUnits(result.units);
       setUserProfile(result.profile);
       setPendingSyncCount(result.pendingCount);
+      if (result.synced > 0) {
+        toast.success({
+          title: 'Sincronização concluída',
+          message: `${result.synced} alteração(ões) enviada(s) para o Supabase.`
+        });
+      }
     } finally {
       setIsSyncing(false);
     }

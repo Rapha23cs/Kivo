@@ -13,6 +13,7 @@ import {
   Trash2
 } from 'lucide-react';
 import Badge from '../common/Badge';
+import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 
 export default function WorkOrderList({
@@ -21,6 +22,7 @@ export default function WorkOrderList({
   onNewOrder,
   onDeleteOrder
 }) {
+  const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [inspectionTypeFilter, setInspectionTypeFilter] = useState('all');
@@ -211,10 +213,21 @@ export default function WorkOrderList({
                       {onDeleteOrder && (
                         <button
                           type="button"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            if (confirm(`Deseja excluir a inspeção ${order.id}?`)) {
-                              onDeleteOrder(order);
+                            const ok = await confirm({
+                              title: 'Excluir inspeção',
+                              message: 'Deseja excluir esta inspeção e todas as respostas registradas no checklist? Essa ação não pode ser desfeita.',
+                              detail: `${order.id} • ${order.hospitalName}`,
+                              confirmLabel: 'Excluir Inspeção',
+                              variant: 'danger'
+                            });
+                            if (ok) {
+                              await onDeleteOrder(order);
+                              toast.success({
+                                title: 'Inspeção excluída',
+                                message: `${order.id} foi removida.`
+                              });
                             }
                           }}
                           className="p-2 text-[#71717A] hover:text-[#FB7185] rounded-lg hover:bg-[#221216] transition shrink-0"
@@ -336,10 +349,21 @@ export default function WorkOrderList({
                             {onDeleteOrder && (
                               <button
                                 type="button"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  if (confirm(`Deseja excluir a inspeção ${order.id}?`)) {
-                                    onDeleteOrder(order);
+                                  const ok = await confirm({
+                                    title: 'Excluir inspeção',
+                                    message: 'Deseja excluir esta inspeção e todas as respostas registradas no checklist? Essa ação não pode ser desfeita.',
+                                    detail: `${order.id} • ${order.hospitalName}`,
+                                    confirmLabel: 'Excluir Inspeção',
+                                    variant: 'danger'
+                                  });
+                                  if (ok) {
+                                    await onDeleteOrder(order);
+                                    toast.success({
+                                      title: 'Inspeção excluída',
+                                      message: `${order.id} foi removida.`
+                                    });
                                   }
                                 }}
                                 className="p-1.5 text-[#71717A] hover:text-[#FB7185] rounded-lg hover:bg-[#221216] transition"

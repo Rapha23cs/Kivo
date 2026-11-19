@@ -14,6 +14,7 @@ import {
   Cloud
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
+import { useFeedback } from '../common/FeedbackProvider';
 
 export default function UserProfileModal({
   isOpen,
@@ -28,6 +29,7 @@ export default function UserProfileModal({
 }) {
   if (!isOpen) return null;
 
+  const { confirm } = useFeedback();
   const [activeTab, setActiveTab] = useState('profile'); // profile | security | device
   const [profile, setProfile] = useState({ ...userProfile });
   const [saving, setSaving] = useState(false);
@@ -137,9 +139,13 @@ export default function UserProfileModal({
   const handleSafeSignOut = async () => {
     if (!onSignOut) return;
     if (pendingSyncCount > 0) {
-      const ok = confirm(
-        `Existem ${pendingSyncCount} alteração(ões) offline ainda não enviadas ao Supabase. Se sair agora, os dados pendentes deste aparelho serão limpos. Deseja sair mesmo assim?`
-      );
+      const ok = await confirm({
+        title: 'Alterações offline pendentes',
+        message: 'Existem dados salvos apenas neste aparelho que ainda não foram enviados ao Supabase. Se sair agora, os dados não sincronizados serão removidos deste dispositivo.',
+        detail: `${pendingSyncCount} registro(s) aguardando sincronização`,
+        confirmLabel: 'Sair mesmo assim',
+        variant: 'warning'
+      });
       if (!ok) return;
     }
     onClose();

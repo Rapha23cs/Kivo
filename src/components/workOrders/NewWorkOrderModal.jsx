@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Calendar, Building2, User, ClipboardList, AlertCircle } from 'lucide-react';
 import { DataService } from '../../supabase/dataService';
+import { useFeedback } from '../common/FeedbackProvider';
 
 export default function NewWorkOrderModal({
   isOpen,
@@ -14,6 +15,7 @@ export default function NewWorkOrderModal({
 }) {
   if (!isOpen) return null;
 
+  const { toast } = useFeedback();
   const [selectedUnitId, setSelectedUnitId] = useState(initialUnit?.id || '');
   const [clientName, setClientName] = useState(
     initialUnit?.clienteNome || clients[0]?.nome || ''
@@ -50,7 +52,10 @@ export default function NewWorkOrderModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!hospitalName.trim() || !regional.trim() || !municipio.trim()) {
-      alert('Preencha Unidade, Regional e Município para criar a inspeção.');
+      toast.warning({
+        title: 'Campos obrigatórios',
+        message: 'Preencha Unidade, Regional e Município para criar a inspeção.'
+      });
       return;
     }
 
@@ -93,6 +98,10 @@ export default function NewWorkOrderModal({
     };
 
     onCreateOrder(newOrderData);
+    toast.success({
+      title: 'Vistoria criada',
+      message: `${newOrderData.hospitalName} • 63 itens carregados.`
+    });
     onClose();
   };
 

@@ -14,6 +14,7 @@ import {
   Link2
 } from 'lucide-react';
 import Badge from '../common/Badge';
+import { useFeedback } from '../common/FeedbackProvider';
 import ReportEditorModal from './ReportEditorModal';
 import ReportPrintView from './ReportPrintView';
 import { createBlankReport, calculateAdherenceLevel } from '../../data/reportTemplateData';
@@ -32,6 +33,7 @@ export default function ReportsModule({
   onClearInitialEditingReport,
   onOpenOrderByCode
 }) {
+  const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [editingReport, setEditingReport] = useState(null);
   const [printingReport, setPrintingReport] = useState(null);
@@ -329,9 +331,20 @@ export default function ReportsModule({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(`Deseja excluir o relatório ${rep.codigoRelatorio}?`)) {
-                        onDeleteReport(rep);
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: 'Excluir relatório técnico',
+                        message: 'Deseja remover permanentemente este relatório técnico, tabela de desvios e registros fotográficos?',
+                        detail: `${rep.codigoRelatorio} • ${rep.unidade || 'Unidade'}`,
+                        confirmLabel: 'Excluir Relatório',
+                        variant: 'danger'
+                      });
+                      if (ok) {
+                        await onDeleteReport(rep);
+                        toast.success({
+                          title: 'Relatório excluído',
+                          message: `${rep.codigoRelatorio} foi removido.`
+                        });
                       }
                     }}
                     className="px-3 py-2 bg-[#1C1D22] hover:bg-[#221216] text-[#71717A] hover:text-[#FB7185] border border-[#2D2F36] rounded-lg text-xs transition"
