@@ -356,7 +356,7 @@ export const ReportService = {
     return this.getReports();
   },
 
-  async saveReport(report) {
+  saveDraftLocal(report) {
     const updated = {
       ...report,
       updatedAt: new Date().toISOString()
@@ -372,7 +372,13 @@ export const ReportService = {
       nextList = [updated, ...current];
     }
     saveStoredReports(nextList);
-    await OfflineStore.enqueueReportUpsert(updated.codigoRelatorio);
+    OfflineStore.enqueueReportUpsert(updated.codigoRelatorio);
+    return { updated, nextList };
+  },
+
+  async saveReport(report) {
+    const { updated, nextList: localList } = this.saveDraftLocal(report);
+    let nextList = localList;
 
     if (isSupabaseConfigured() && navigator.onLine !== false) {
       try {

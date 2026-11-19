@@ -25,6 +25,7 @@ export default function ReportsModule({
   hospitals,
   userProfile,
   onSaveReport,
+  onLocalDraftUpdate,
   onDeleteReport,
   initialEditingReport,
   onClearInitialEditingReport,
@@ -88,8 +89,10 @@ export default function ReportsModule({
     const built = existing
       ? ReportService.syncFromOrder(existing, order, userProfile)
       : ReportService.buildFromOrder(order, userProfile);
+    const { updated, nextList } = ReportService.saveDraftLocal(built);
+    onLocalDraftUpdate?.(nextList);
     setShowImportPicker(false);
-    setEditingReport(built);
+    setEditingReport(updated);
   };
 
   return (
@@ -349,6 +352,7 @@ export default function ReportsModule({
           linkedOrder={findLinkedOrder(editingReport)}
           userProfile={userProfile}
           onClose={() => setEditingReport(null)}
+          onLocalDraftUpdate={onLocalDraftUpdate}
           onSaveReport={async (saved) => {
             await onSaveReport(saved);
           }}

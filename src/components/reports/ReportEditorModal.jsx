@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Save,
@@ -41,36 +41,129 @@ export default function ReportEditorModal({
   isOpen,
   onClose,
   onSaveReport,
+  onLocalDraftUpdate,
   linkedOrder,
   userProfile
 }) {
+  const resumeStorageKey = report?.codigoRelatorio
+    ? `kivo_resume_report_${report.codigoRelatorio}`
+    : null;
+
+  const getInitialResume = () => {
+    if (!resumeStorageKey) return {};
+    try {
+      const raw = localStorage.getItem(resumeStorageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const initialResume = getInitialResume();
   const [draft, setDraft] = useState(report);
-  const [activeTab, setActiveTab] = useState('cover'); // cover | deviations | photos | conclusion
-  const [selectedPhotoSection, setSelectedPhotoSection] = useState(PHOTO_SECTIONS[0]);
+  const [activeTab, setActiveTab] = useState(initialResume.activeTab || 'cover'); // cover | deviations | photos | conclusion
+  const [selectedPhotoSection, setSelectedPhotoSection] = useState(
+    initialResume.selectedPhotoSection || PHOTO_SECTIONS[0]
+  );
   const [showOnlyWithPhotos, setShowOnlyWithPhotos] = useState(false);
   const [showTable01Rules, setShowTable01Rules] = useState(false);
   const [showTable03Rules, setShowTable03Rules] = useState(false);
   const [uploadingKey, setUploadingKey] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState('idle'); // idle | saving | saved
   const [showPrintView, setShowPrintView] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
 
+  const latestDraftRef = useRef(report);
+  const isDirtyRef = useRef(false);
+  const debounceTimerRef = useRef(null);
+
   useEffect(() => {
     setDraft(report);
+    latestDraftRef.current = report;
+    isDirtyRef.current = false;
+    setAutoSaveState('idle');
     setSyncNotice('');
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    const resumed = getInitialResume();
+    if (resumed.activeTab) setActiveTab(resumed.activeTab);
+    if (resumed.selectedPhotoSection) setSelectedPhotoSection(resumed.selectedPhotoSection);
   }, [report?.codigoRelatorio, report?.id]);
 
+  useEffect(() => {
+    if (!resumeStorageKey) return;
+    try {
+      localStorage.setItem(
+        resumeStorageKey,
+        JSON.stringify({ activeTab, selectedPhotoSection })
+      );
+    } catch {
+      // ignora erro de armazenamento UI
+    }
+  }, [resumeStorageKey, activeTab, selectedPhotoSection]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (isDirtyRef.current && latestDraftRef.current) {
+        ReportService.saveDraftLocal(latestDraftRef.current);
+      }
+    };
+  }, []);
+
   if (!isOpen || !draft) return null;
+
+  const scheduleAutoSave = (nextDraft, { immediate = false } = {}) => {
+    latestDraftRef.current = nextDraft;
+    isDirtyRef.current = true;
+    const { nextList } = ReportService.saveDraftLocal(nextDraft);
+    onLocalDraftUpdate?.(nextList);
+    setAutoSaveState('saving');
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const runCloudSave = async () => {
+      try {
+        await onSaveReport(latestDraftRef.current);
+        isDirtyRef.current = false;
+        setAutoSaveState('saved');
+      } catch {
+        setAutoSaveState('saved');
+      }
+    };
+
+    if (immediate) {
+      runCloudSave();
+    } else {
+      debounceTimerRef.current = setTimeout(runCloudSave, 1000);
+    }
+  };
+
+  const applyDraftUpdate = (updater, options = {}) => {
+    setDraft((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      scheduleAutoSave(next, options);
+      return next;
+    });
+  };
 
   const handleSyncFromChecklist = () => {
     if (!linkedOrder) return;
     const synced = ReportService.syncFromOrder(draft, linkedOrder, userProfile);
-    setDraft(synced);
-    setSyncNotice(`Métricas, desvios e evidências sincronizados com o checklist ${linkedOrder.id}. Salve para confirmar no Supabase.`);
+    applyDraftUpdate(synced, { immediate: true });
+    setSyncNotice(`Métricas, desvios e evidências sincronizados com o checklist ${linkedOrder.id}.`);
   };
 
   const updateField = (field, value) => {
-    setDraft((prev) => {
+    applyDraftUpdate((prev) => {
       const next = { ...prev, [field]: value };
       if (field === 'itensAvaliados' || field === 'conformidades') {
         const indice = calculateConformityIndex(
@@ -87,7 +180,7 @@ export default function ReportEditorModal({
   const handleRecalcFromDeviations = (nextDesvios) => {
     const counts = summarizeDeviationsByClass(nextDesvios);
     const suggestedMat = suggestMaturityLevel(nextDesvios);
-    setDraft((prev) => ({
+    applyDraftUpdate((prev) => ({
       ...prev,
       desvios: nextDesvios,
       ...counts,
@@ -155,19 +248,22 @@ export default function ReportEditorModal({
     setUploadingKey(`slot-${ordem}`);
     try {
       const url = await ReportService.uploadImage(file, draft.codigoRelatorio, `item-${ordem}`);
-      setDraft((prev) => ({
-        ...prev,
-        registrosFotograficos: prev.registrosFotograficos.map((f) =>
-          f.ordem === ordem ? { ...f, fotoUrl: url, incluirNoRelatorio: true } : f
-        )
-      }));
+      applyDraftUpdate(
+        (prev) => ({
+          ...prev,
+          registrosFotograficos: prev.registrosFotograficos.map((f) =>
+            f.ordem === ordem ? { ...f, fotoUrl: url, incluirNoRelatorio: true } : f
+          )
+        }),
+        { immediate: true }
+      );
     } finally {
       setUploadingKey(null);
     }
   };
 
   const handlePhotoFieldChange = (ordem, field, value) => {
-    setDraft((prev) => ({
+    applyDraftUpdate((prev) => ({
       ...prev,
       registrosFotograficos: prev.registrosFotograficos.map((f) =>
         f.ordem === ordem ? { ...f, [field]: value } : f
@@ -177,7 +273,7 @@ export default function ReportEditorModal({
 
   const handleAddExtraPhoto = () => {
     const maxOrder = Math.max(56, ...(draft.registrosFotograficos || []).map((f) => f.ordem));
-    setDraft((prev) => ({
+    applyDraftUpdate((prev) => ({
       ...prev,
       registrosFotograficos: [
         ...(prev.registrosFotograficos || []),
@@ -205,17 +301,40 @@ export default function ReportEditorModal({
   };
 
   const handleSave = async (targetStatus) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     setSaving(true);
     try {
       const payload = {
-        ...draft,
-        status: targetStatus || draft.status
+        ...latestDraftRef.current,
+        status: targetStatus || latestDraftRef.current.status
       };
+      latestDraftRef.current = payload;
       await onSaveReport(payload);
+      isDirtyRef.current = false;
       setDraft(payload);
+      setAutoSaveState('saved');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCloseModal = async () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (isDirtyRef.current && latestDraftRef.current) {
+      try {
+        await onSaveReport(latestDraftRef.current);
+        isDirtyRef.current = false;
+      } catch {
+        // já salvo localmente via saveDraftLocal
+      }
+    }
+    onClose();
   };
 
   const photos = draft.registrosFotograficos || [];
@@ -302,7 +421,7 @@ export default function ReportEditorModal({
 
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleCloseModal}
                 className="p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22] transition"
               >
                 <X className="w-5 h-5" />
@@ -1127,14 +1246,22 @@ export default function ReportEditorModal({
           )}
 
           {/* RODAPÉ */}
-          <div className="px-4 py-2.5 border-t border-[#1F2024] bg-[#111214] flex items-center justify-between shrink-0 text-xs">
-            <span className="text-[#71717A]">
-              Kivo • Relatório de Inspeção Ambiental ({draft.clienteNome || 'Multi-Cliente'})
-            </span>
+          <div className="px-4 py-2.5 border-t border-[#1F2024] bg-[#111214] flex items-center justify-between gap-3 shrink-0 text-xs pb-safe">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[#71717A] truncate">
+                Kivo • Relatório ({draft.clienteNome || 'Multi-Cliente'})
+              </span>
+              {autoSaveState === 'saving' && (
+                <span className="text-[11px] text-[#FBBF24] font-medium shrink-0">• Salvando rascunho...</span>
+              )}
+              {autoSaveState === 'saved' && (
+                <span className="text-[11px] text-[#34D399] font-medium shrink-0">• Salvo automaticamente ✓</span>
+              )}
+            </div>
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1D22] rounded-lg transition"
+              onClick={handleCloseModal}
+              className="px-4 py-1.5 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1D22] rounded-lg transition shrink-0"
             >
               Fechar
             </button>

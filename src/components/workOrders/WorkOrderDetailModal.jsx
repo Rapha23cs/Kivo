@@ -93,7 +93,17 @@ export default function WorkOrderDetailModal({
 }) {
   if (!isOpen || !order) return null;
 
-  const [activeTab, setActiveTab] = useState('checklist'); // checklist, deviations
+  const resumeStorageKey = `kivo_resume_order_${order.id}`;
+  const initialResume = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(resumeStorageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }, [resumeStorageKey]);
+
+  const [activeTab, setActiveTab] = useState(initialResume.activeTab || 'checklist'); // checklist, deviations
   const [currentOrder, setCurrentOrder] = useState(order);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showOrientations, setShowOrientations] = useState(false);
@@ -111,9 +121,20 @@ export default function WorkOrderDetailModal({
   }, [order]);
   
   // Filtros avançados do checklist
-  const [selectedTopic, setSelectedTopic] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, pending, sim, nao, na
+  const [selectedTopic, setSelectedTopic] = useState(initialResume.selectedTopic || 'ALL');
+  const [statusFilter, setStatusFilter] = useState(initialResume.statusFilter || 'ALL'); // ALL, pending, sim, nao, na
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        resumeStorageKey,
+        JSON.stringify({ activeTab, selectedTopic, statusFilter })
+      );
+    } catch {
+      // ignora falha de armazenamento UI
+    }
+  }, [resumeStorageKey, activeTab, selectedTopic, statusFilter]);
 
   const statusBadges = {
     open: { variant: 'info', label: 'Agendada' },

@@ -249,9 +249,11 @@ export default function App() {
     const reportDraft = existing
       ? ReportService.syncFromOrder(existing, order, userProfile)
       : ReportService.buildFromOrder(order, userProfile);
+    const { updated, nextList } = ReportService.saveDraftLocal(reportDraft);
+    setReports(nextList);
     setSelectedOrder(null);
     setActiveTab('reports');
-    setPendingReportToOpen(reportDraft);
+    setPendingReportToOpen(updated);
   };
 
   const handleDeleteOrder = async (order) => {
@@ -335,6 +337,9 @@ export default function App() {
                 onSaveReport={async (rep) => {
                   const next = await ReportService.saveReport(rep);
                   setReports(next);
+                }}
+                onLocalDraftUpdate={(nextList) => {
+                  setReports(nextList);
                 }}
                 onDeleteReport={async (rep) => {
                   const next = await ReportService.deleteReport(rep);
