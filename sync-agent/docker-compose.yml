@@ -1,0 +1,20 @@
+services:
+  kivo-sync-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kivo-sync-agent
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - ENVIRONMENTAL_API_URL=${ENVIRONMENTAL_API_URL:-http://gerenciamento-ambiental:8000/api/vistorias}
+      - ENVIRONMENTAL_API_TOKEN=${ENVIRONMENTAL_API_TOKEN:-}
+      - SYNC_INTERVAL_MINUTES=${SYNC_INTERVAL_MINUTES:-10}
+      - DRY_RUN=${DRY_RUN:-false}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

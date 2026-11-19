@@ -1,0 +1,20 @@
+{
+  "name": "kivo-sync-agent",
+  "version": "1.0.0",
+  "description": "Agente de sincronização interna para Coolify: integra vistorias do Kivo (Supabase Cloud) ao sistema Gerenciamento Ambiental",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test-sync": "DRY_RUN=true node index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.1",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

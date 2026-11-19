@@ -1,0 +1,28 @@
+import React from 'react';
+
+export default function Badge({ children, variant = 'neutral', size = 'md', className = '' }) {
+  const variantStyles = {
+    neutral: 'bg-[#1A1B20] text-[#A1A1AA] border-[#27282E]',
+    primary: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
+    success: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
+    warning: 'bg-[#1D1F26] text-[#E4E4E7] border-[#333640]',
+    danger: 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/30',
+    info: 'bg-[#181A20] text-[#CBD5E1] border-[#2C2F38]',
+    purple: 'bg-[#1B1926] text-[#A5B4FC] border-[#6366F1]/30',
+  };
+
+  const sizeStyles = {
+    sm: 'text-xs px-2 py-0.5',
+    md: 'text-xs px-2.5 py-1',
+    lg: 'text-sm px-3 py-1.5',
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${variantStyles[variant] || variantStyles.neutral} ${sizeStyles[size]} ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
