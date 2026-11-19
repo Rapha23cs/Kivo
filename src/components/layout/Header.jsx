@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Plus, Menu } from 'lucide-react';
+import { Building2, Plus, Menu, WifiOff, RefreshCw, Cloud } from 'lucide-react';
 
 export default function Header({
   clientNames = [],
@@ -8,7 +8,11 @@ export default function Header({
   onOpenNewOrder,
   onOpenProfile,
   onOpenMenu,
-  userProfile
+  userProfile,
+  isOnline = true,
+  pendingSyncCount = 0,
+  isSyncing = false,
+  onSyncNow
 }) {
   return (
     <header className="no-print h-14 sm:h-16 border-b border-[#1F2024] bg-[#0D0E10]/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-30 shrink-0">
@@ -30,7 +34,7 @@ export default function Header({
           <select
             value={selectedClient}
             onChange={(e) => onSelectClient(e.target.value)}
-            className="bg-transparent text-[#F4F4F5] font-medium focus:outline-none cursor-pointer w-[135px] sm:w-auto sm:max-w-[260px] truncate"
+            className="bg-transparent text-[#F4F4F5] font-medium focus:outline-none cursor-pointer w-[120px] sm:w-auto sm:max-w-[260px] truncate"
           >
             <option value="all" className="bg-[#141518] text-[#F4F4F5]">Todos os Clientes</option>
             {clientNames.map((name) => (
@@ -44,6 +48,48 @@ export default function Header({
 
       {/* Controles à direita */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* Status de Conexão & Sincronização Offline -> Nuvem */}
+        {!isOnline ? (
+          <span
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/30 shrink-0"
+            title="Sem conexão. Suas alterações estão sendo salvas localmente no aparelho e serão enviadas automaticamente quando a internet voltar."
+          >
+            <WifiOff className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Offline</span>
+            {pendingSyncCount > 0 && (
+              <span className="font-mono text-[10px] bg-[#332614] px-1.5 py-0.2 rounded">
+                {pendingSyncCount}
+              </span>
+            )}
+          </span>
+        ) : isSyncing ? (
+          <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-[#122620] text-[#34D399] border border-[#2EB88A]/30 shrink-0">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+            <span className="hidden sm:inline">Sincronizando...</span>
+          </span>
+        ) : pendingSyncCount > 0 ? (
+          <button
+            type="button"
+            onClick={onSyncNow}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/40 transition shrink-0"
+            title="Clique para enviar as alterações offline pendentes para o Supabase agora"
+          >
+            <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Sincronizar</span>
+            <span className="font-mono text-[10px] bg-[#2EB88A] text-[#080A09] px-1.5 rounded-full font-bold">
+              {pendingSyncCount}
+            </span>
+          </button>
+        ) : (
+          <span
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-[#141518] text-[#A1A1AA] border border-[#232429] shrink-0"
+            title="Dados sincronizados com o Supabase Cloud"
+          >
+            <Cloud className="w-3.5 h-3.5 text-[#34D399]" />
+            <span>Nuvem</span>
+          </span>
+        )}
+
         <button
           type="button"
           onClick={onOpenNewOrder}
@@ -51,8 +97,8 @@ export default function Header({
           title="Nova Vistoria"
         >
           <Plus className="w-3.5 h-3.5 text-[#34D399]" />
-          <span className="hidden xs:inline sm:inline">Nova Vistoria</span>
-          <span className="xs:hidden sm:hidden">Nova</span>
+          <span className="hidden sm:inline">Nova Vistoria</span>
+          <span className="sm:hidden">Nova</span>
         </button>
 
         <div

@@ -2,6 +2,7 @@
 import { DEFAULT_USER_PROFILE } from '../data/mockInitialData';
 import { EMSERH_BASE_ITEMS } from '../data/emserhChecklistData';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseConfig';
+import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
 
 const LS_PROFILE_KEY = 'kivo_user_profile';
 const LS_ORDERS_KEY = 'kivo_work_orders';
@@ -10,15 +11,6 @@ const LS_CATALOG_ITEMS_KEY = 'kivo_supabase_catalog_items';
 const LS_ACTIVE_UID_KEY = 'kivo_active_supabase_uid';
 
 const VALID_CLASSIFICATIONS = new Set(['Leve', 'Médio', 'Grave', 'Crítico']);
-
-function getStoredJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function normalizeChecklistStatus(item) {
   const raw = item?.status || item?.response;
@@ -50,11 +42,98 @@ export function compressImageToDataUrl(file, maxWidth = 1280, quality = 0.78) {
   });
 }
 
+export async function uploadDataUrlToStorage(dataUrl, relativePath) {
+  if (!dataUrl || !String(dataUrl).startsWith('data:image/')) return dataUrl;
+  if (!isSupabaseConfigured() || navigator.onLine === false) return null;
+
+  try {
+    const { client } = getSupabaseClient();
+    if (!client) return null;
+    const { data: userData } = await client.auth.getUser();
+    const user = userData?.user;
+    if (!user) return null;
+
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const filePath = `${user.id}/${relativePath}`;
+
+    const { error: uploadError } = await client.storage
+      .from('relatorios-midia')
+      .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+
+    if (uploadError) {
+      console.warn('Falha ao subir mídia para Storage:', uploadError.message);
+      return null;
+    }
+
+    const { data: signed } = await client.storage
+      .from('relatorios-midia')
+      .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+
+    return signed?.signedUrl || null;
+  } catch {
+    return null;
+  }
+}
+
+let ordersMemoryCache = null;
+let profileMemoryCache = null;
+let clientsMemoryCache = null;
+let catalogMemoryCache = null;
+
+function persistOrdersCache(list) {
+  ordersMemoryCache = list;
+  safeLocalStorageSet(LS_ORDERS_KEY, JSON.stringify(list));
+  OfflineStore.saveCache('orders', list);
+}
+
+function persistProfileCache(profile) {
+  profileMemoryCache = profile;
+  safeLocalStorageSet(LS_PROFILE_KEY, JSON.stringify(profile));
+  OfflineStore.saveCache('profile', profile);
+}
+
 export const DataService = {
+  async hydrateFromIndexedDb() {
+    const [ordersIdb, clientsIdb, catalogIdb, profileIdb] = await Promise.all([
+      OfflineStore.loadCache('orders', null),
+      OfflineStore.loadCache('clients', null),
+      OfflineStore.loadCache('catalog', null),
+      OfflineStore.loadCache('profile', null)
+    ]);
+
+    if (Array.isArray(ordersIdb) && (!ordersMemoryCache || ordersIdb.length >= ordersMemoryCache.length)) {
+      ordersMemoryCache = ordersIdb;
+      safeLocalStorageSet(LS_ORDERS_KEY, JSON.stringify(ordersIdb));
+    }
+    if (Array.isArray(clientsIdb) && (!clientsMemoryCache || clientsIdb.length >= clientsMemoryCache.length)) {
+      clientsMemoryCache = clientsIdb;
+      safeLocalStorageSet(LS_CLIENTS_KEY, JSON.stringify(clientsIdb));
+    }
+    if (Array.isArray(catalogIdb) && catalogIdb.length > 0) {
+      catalogMemoryCache = catalogIdb;
+      safeLocalStorageSet(LS_CATALOG_ITEMS_KEY, JSON.stringify(catalogIdb));
+    }
+    if (profileIdb && !profileMemoryCache) {
+      profileMemoryCache = profileIdb;
+      safeLocalStorageSet(LS_PROFILE_KEY, JSON.stringify(profileIdb));
+    }
+
+    return {
+      orders: this.getOrders(),
+      clients: this.getClients(),
+      profile: this.getUserProfile()
+    };
+  },
+
   // ---- CATÁLOGO BASE DE CHECKLIST (public.checklist_itens_modelo + public.tematicas) ----
   getBaseChecklistItems() {
-    const cached = getStoredJson(LS_CATALOG_ITEMS_KEY, null);
+    if (Array.isArray(catalogMemoryCache) && catalogMemoryCache.length > 0) {
+      return catalogMemoryCache;
+    }
+    const cached = safeLocalStorageGet(LS_CATALOG_ITEMS_KEY, null);
     if (Array.isArray(cached) && cached.length > 0) {
+      catalogMemoryCache = cached;
       return cached;
     }
     return EMSERH_BASE_ITEMS;
@@ -63,20 +142,33 @@ export const DataService = {
   // ---- SESSÃO MULTI-USUÁRIO & PERFIL PERSISTIDO NO SUPABASE AUTH ----
   syncSessionUser(user) {
     if (!user) {
+      ordersMemoryCache = null;
+      profileMemoryCache = null;
+      clientsMemoryCache = null;
       localStorage.removeItem(LS_ACTIVE_UID_KEY);
       localStorage.removeItem(LS_ORDERS_KEY);
       localStorage.removeItem(LS_CLIENTS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
+      OfflineStore.clearAllDataCaches();
       return null;
     }
 
     const previousUid = localStorage.getItem(LS_ACTIVE_UID_KEY);
     if (previousUid && previousUid !== user.id) {
+      ordersMemoryCache = null;
+      profileMemoryCache = null;
+      clientsMemoryCache = null;
       localStorage.removeItem(LS_ORDERS_KEY);
       localStorage.removeItem(LS_CLIENTS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
+      OfflineStore.clearAllDataCaches();
     }
     localStorage.setItem(LS_ACTIVE_UID_KEY, user.id);
+
+    const pending = OfflineStore.getPendingIndex();
+    if (pending.updateProfile) {
+      return this.getUserProfile();
+    }
 
     const meta = user.user_metadata || {};
     const syncedProfile = {
@@ -89,32 +181,45 @@ export const DataService = {
       phone: meta.phone || ''
     };
 
-    localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(syncedProfile));
+    persistProfileCache(syncedProfile);
     return syncedProfile;
   },
 
   getUserProfile() {
-    return getStoredJson(LS_PROFILE_KEY, DEFAULT_USER_PROFILE);
+    if (profileMemoryCache) return profileMemoryCache;
+    const stored = safeLocalStorageGet(LS_PROFILE_KEY, DEFAULT_USER_PROFILE);
+    profileMemoryCache = stored;
+    return stored;
   },
 
   async saveUserProfile(profile) {
-    localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(profile));
-    if (isSupabaseConfigured()) {
-      const { client } = getSupabaseClient();
-      if (client) {
-        const { error } = await client.auth.updateUser({
-          data: {
-            full_name: profile.name,
-            registry: profile.registry,
-            title: profile.title,
-            specialty: profile.specialty,
-            consultancy_name: profile.consultancyName,
-            phone: profile.phone
+    persistProfileCache(profile);
+    await OfflineStore.enqueueProfileUpdate();
+
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        const { client } = getSupabaseClient();
+        if (client) {
+          const { error } = await client.auth.updateUser({
+            data: {
+              full_name: profile.name,
+              registry: profile.registry,
+              title: profile.title,
+              specialty: profile.specialty,
+              consultancy_name: profile.consultancyName,
+              phone: profile.phone
+            }
+          });
+          if (error) {
+            throw new Error(`Erro ao salvar perfil no Supabase: ${error.message}`);
           }
-        });
-        if (error) {
-          throw new Error(`Erro ao salvar perfil no Supabase: ${error.message}`);
+          await OfflineStore.dequeueProfileUpdate();
         }
+      } catch (err) {
+        if (navigator.onLine !== false && !String(err?.message || '').toLowerCase().includes('fetch')) {
+          throw err;
+        }
+        console.warn('Perfil salvo offline e enfileirado para sincronização.');
       }
     }
     return profile;
@@ -122,12 +227,18 @@ export const DataService = {
 
   // ---- CLIENTES (public.clientes) ----
   getClients() {
-    return getStoredJson(LS_CLIENTS_KEY, []);
+    if (clientsMemoryCache) return clientsMemoryCache;
+    const stored = safeLocalStorageGet(LS_CLIENTS_KEY, []);
+    clientsMemoryCache = stored;
+    return stored;
   },
 
   // ---- INSPEÇÕES & CHECKLISTS (public.inspecoes + public.inspecao_respostas) ----
   getOrders() {
-    return getStoredJson(LS_ORDERS_KEY, []);
+    if (Array.isArray(ordersMemoryCache)) return ordersMemoryCache;
+    const stored = safeLocalStorageGet(LS_ORDERS_KEY, []);
+    ordersMemoryCache = stored;
+    return stored;
   },
 
   getOrderById(id) {
@@ -148,25 +259,124 @@ export const DataService = {
       newOrders = [updatedOrder, ...orders];
     }
 
-    localStorage.setItem(LS_ORDERS_KEY, JSON.stringify(newOrders));
+    persistOrdersCache(newOrders);
+    OfflineStore.enqueueOrderUpsert(mergedOrder.id);
 
-    this.syncOrderToSupabase(mergedOrder, { silentAuth: true })
-      .then((inspecaoRow) => {
-        if (!inspecaoRow?.id) return;
-        const latest = this.getOrders();
-        const patched = latest.map((o) =>
-          o.id === mergedOrder.id ? { ...o, supabaseId: inspecaoRow.id } : o
-        );
-        localStorage.setItem(LS_ORDERS_KEY, JSON.stringify(patched));
-        if (typeof onSynced === 'function') {
-          onSynced(inspecaoRow.id, patched);
-        }
-      })
-      .catch((err) => {
-        console.warn('Erro ao salvar inspeção no Supabase:', err.message);
-      });
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      this.syncOrderWithMedia(mergedOrder)
+        .then(async ({ inspecaoRow, resolvedOrder }) => {
+          if (!inspecaoRow?.id) return;
+          const latest = this.getOrders();
+          const patched = latest.map((o) =>
+            o.id === mergedOrder.id
+              ? { ...o, ...resolvedOrder, supabaseId: inspecaoRow.id }
+              : o
+          );
+          persistOrdersCache(patched);
+          await OfflineStore.dequeueOrderUpsert(mergedOrder.id);
+          if (typeof onSynced === 'function') {
+            onSynced(inspecaoRow.id, patched);
+          }
+        })
+        .catch((err) => {
+          console.warn('Inspeção salva offline; aguardando sincronização:', err.message);
+        });
+    }
 
     return newOrders;
+  },
+
+  async syncOrderWithMedia(order) {
+    let resolvedOrder = order;
+    const checklist = order.checklist || [];
+    let mediaChanged = false;
+
+    if (navigator.onLine !== false && isSupabaseConfigured()) {
+      const cleanOrderId = String(order.id || 'os').replace(/[^A-Za-z0-9-_]/g, '');
+      const updatedChecklist = await Promise.all(
+        checklist.map(async (item) => {
+          if (!item?.evidenceUrl || !String(item.evidenceUrl).startsWith('data:image/')) {
+            return item;
+          }
+          const cleanItemId = String(item.id || `item-${item.number}`).replace(/[^A-Za-z0-9-_]/g, '');
+          const uploadedUrl = await uploadDataUrlToStorage(
+            item.evidenceUrl,
+            `checklists/${cleanOrderId}/${cleanItemId}-${Date.now()}.jpg`
+          );
+          if (uploadedUrl) {
+            mediaChanged = true;
+            return { ...item, evidenceUrl: uploadedUrl };
+          }
+          return item;
+        })
+      );
+
+      if (mediaChanged) {
+        resolvedOrder = { ...order, checklist: updatedChecklist };
+      }
+    }
+
+    const inspecaoRow = await this.syncOrderToSupabase(resolvedOrder, { silentAuth: true });
+    return { inspecaoRow, resolvedOrder };
+  },
+
+  async flushPendingProfile() {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const profile = this.getUserProfile();
+    const { client } = getSupabaseClient();
+    if (!client) return false;
+    const { data: userData } = await client.auth.getUser();
+    if (!userData?.user) return false;
+
+    const { error } = await client.auth.updateUser({
+      data: {
+        full_name: profile.name,
+        registry: profile.registry,
+        title: profile.title,
+        specialty: profile.specialty,
+        consultancy_name: profile.consultancyName,
+        phone: profile.phone
+      }
+    });
+    if (error) return false;
+    await OfflineStore.dequeueProfileUpdate();
+    return true;
+  },
+
+  async flushPendingOrder(orderId) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const order = this.getOrderById(orderId);
+    if (!order) {
+      await OfflineStore.dequeueOrderUpsert(orderId);
+      return true;
+    }
+
+    const { inspecaoRow, resolvedOrder } = await this.syncOrderWithMedia(order);
+    if (!inspecaoRow?.id) return false;
+
+    const latest = this.getOrders();
+    const patched = latest.map((o) =>
+      o.id === orderId ? { ...o, ...resolvedOrder, supabaseId: inspecaoRow.id } : o
+    );
+    persistOrdersCache(patched);
+    await OfflineStore.dequeueOrderUpsert(orderId);
+    return true;
+  },
+
+  async flushPendingOrderDelete(orderId) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const { client } = getSupabaseClient();
+    if (!client) return false;
+    const { data: userData } = await client.auth.getUser();
+    if (!userData?.user) return false;
+
+    const { error } = await client
+      .from('inspecoes')
+      .delete()
+      .eq('codigo_kivo', orderId);
+    if (error) return false;
+    await OfflineStore.dequeueOrderDelete(orderId);
+    return true;
   },
 
   createOrder(orderData, onSynced) {
@@ -189,53 +399,41 @@ export const DataService = {
 
   async uploadChecklistEvidence(file, orderId, itemId) {
     const compressedDataUrl = await compressImageToDataUrl(file);
-    if (!isSupabaseConfigured()) return compressedDataUrl;
-
-    try {
-      const { client } = getSupabaseClient();
-      const { data: userData } = await client.auth.getUser();
-      const user = userData?.user;
-      if (!user) return compressedDataUrl;
-
-      const res = await fetch(compressedDataUrl);
-      const blob = await res.blob();
-      const cleanOrderId = String(orderId || 'os').replace(/[^A-Za-z0-9-_]/g, '');
-      const cleanItemId = String(itemId || 'item').replace(/[^A-Za-z0-9-_]/g, '');
-      const filePath = `${user.id}/checklists/${cleanOrderId}/${cleanItemId}-${Date.now()}.jpg`;
-
-      const { error: uploadError } = await client.storage
-        .from('relatorios-midia')
-        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-
-      if (uploadError) {
-        console.warn('Fallback para imagem local (checklists):', uploadError.message);
-        return compressedDataUrl;
-      }
-
-      const { data: signed } = await client.storage
-        .from('relatorios-midia')
-        .createSignedUrl(filePath, 60 * 60 * 24 * 365);
-
-      return signed?.signedUrl || compressedDataUrl;
-    } catch {
+    if (!isSupabaseConfigured() || navigator.onLine === false) {
       return compressedDataUrl;
     }
+
+    const cleanOrderId = String(orderId || 'os').replace(/[^A-Za-z0-9-_]/g, '');
+    const cleanItemId = String(itemId || 'item').replace(/[^A-Za-z0-9-_]/g, '');
+    const uploadedUrl = await uploadDataUrlToStorage(
+      compressedDataUrl,
+      `checklists/${cleanOrderId}/${cleanItemId}-${Date.now()}.jpg`
+    );
+
+    return uploadedUrl || compressedDataUrl;
   },
 
   async deleteOrder(order) {
     const nextOrders = this.getOrders().filter((o) => o.id !== order.id);
-    localStorage.setItem(LS_ORDERS_KEY, JSON.stringify(nextOrders));
+    persistOrdersCache(nextOrders);
+    await OfflineStore.enqueueOrderDelete(order.id);
 
-    if (isSupabaseConfigured()) {
-      const { client } = getSupabaseClient();
-      if (client) {
-        const { error } = await client
-          .from('inspecoes')
-          .delete()
-          .eq('codigo_kivo', order.id);
-        if (error) {
-          console.warn('Erro ao excluir inspeção no Supabase:', error.message);
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        const { client } = getSupabaseClient();
+        if (client) {
+          const { error } = await client
+            .from('inspecoes')
+            .delete()
+            .eq('codigo_kivo', order.id);
+          if (!error) {
+            await OfflineStore.dequeueOrderDelete(order.id);
+          } else {
+            console.warn('Erro ao excluir inspeção no Supabase:', error.message);
+          }
         }
+      } catch (err) {
+        console.warn('Exclusão de inspeção aguardando conexão:', err.message);
       }
     }
 
@@ -279,14 +477,22 @@ export const DataService = {
     });
 
     if (baseItems.length > 0) {
-      localStorage.setItem(LS_CATALOG_ITEMS_KEY, JSON.stringify(baseItems));
+      catalogMemoryCache = baseItems;
+      safeLocalStorageSet(LS_CATALOG_ITEMS_KEY, JSON.stringify(baseItems));
+      OfflineStore.saveCache('catalog', baseItems);
     }
 
     return { byCode, byNumber, byId, baseItems };
   },
 
   async loadFromSupabase() {
-    if (!isSupabaseConfigured()) return null;
+    if (!isSupabaseConfigured() || navigator.onLine === false) {
+      return {
+        orders: this.getOrders(),
+        baseItems: this.getBaseChecklistItems(),
+        clients: this.getClients()
+      };
+    }
     const { client } = getSupabaseClient();
     if (!client) return null;
 
@@ -306,7 +512,9 @@ export const DataService = {
         .order('nome', { ascending: true });
       if (!cErr && Array.isArray(cData)) {
         clients = cData;
-        localStorage.setItem(LS_CLIENTS_KEY, JSON.stringify(clients));
+        clientsMemoryCache = clients;
+        safeLocalStorageSet(LS_CLIENTS_KEY, JSON.stringify(clients));
+        OfflineStore.saveCache('clients', clients);
       }
     } catch {
       // ignora se migration 002 não foi aplicada
@@ -417,9 +625,26 @@ export const DataService = {
       };
     });
 
-    localStorage.setItem(LS_ORDERS_KEY, JSON.stringify(mappedOrders));
+    // Preservar edições/exclusões feitas offline que ainda não foram enviadas para o Supabase
+    const pending = OfflineStore.getPendingIndex();
+    const deletedSet = new Set(pending.deleteOrders);
+    const dirtySet = new Set(pending.upsertOrders);
+    const localOrders = this.getOrders();
+    const localById = new Map(localOrders.map((o) => [o.id, o]));
+
+    const mergedRemote = mappedOrders
+      .filter((remoteOrd) => !deletedSet.has(remoteOrd.id))
+      .map((remoteOrd) => (dirtySet.has(remoteOrd.id) && localById.has(remoteOrd.id)
+        ? localById.get(remoteOrd.id)
+        : remoteOrd));
+
+    const seenIds = new Set(mergedRemote.map((o) => o.id));
+    const localOnlyPending = localOrders.filter((o) => dirtySet.has(o.id) && !seenIds.has(o.id));
+    const finalOrders = [...localOnlyPending, ...mergedRemote];
+
+    persistOrdersCache(finalOrders);
     return {
-      orders: mappedOrders,
+      orders: finalOrders,
       baseItems: canonicalBase,
       clients
     };

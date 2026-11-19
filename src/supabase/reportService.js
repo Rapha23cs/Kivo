@@ -12,22 +12,25 @@ import {
   createBlankReport
 } from '../data/reportTemplateData';
 import { calculateInspectionSummary } from '../data/emserhChecklistData';
-import { compressImageToDataUrl } from './dataService';
+import { compressImageToDataUrl, uploadDataUrlToStorage } from './dataService';
+import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
 
 const LS_REPORTS_KEY = 'kivo_environmental_reports';
 const LS_ACTIVE_UID_KEY = 'kivo_active_supabase_uid';
 
+let reportsMemoryCache = null;
+
 function getStoredReports() {
-  try {
-    const raw = localStorage.getItem(LS_REPORTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  if (Array.isArray(reportsMemoryCache)) return reportsMemoryCache;
+  const stored = safeLocalStorageGet(LS_REPORTS_KEY, []);
+  reportsMemoryCache = stored;
+  return stored;
 }
 
 function saveStoredReports(list) {
-  localStorage.setItem(LS_REPORTS_KEY, JSON.stringify(list));
+  reportsMemoryCache = list;
+  safeLocalStorageSet(LS_REPORTS_KEY, JSON.stringify(list));
+  OfflineStore.saveCache('reports', list);
 }
 
 function mapClassificationFromChecklist(item) {
@@ -127,6 +130,7 @@ export const ReportService = {
   },
 
   clearLocalCache() {
+    reportsMemoryCache = null;
     localStorage.removeItem(LS_REPORTS_KEY);
   },
 
@@ -284,38 +288,72 @@ export const ReportService = {
 
   async uploadImage(file, codigoRelatorio, prefix = 'foto') {
     const compressedDataUrl = await compressImageToDataUrl(file);
-
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) {
       return compressedDataUrl;
     }
 
-    try {
-      const { client } = getSupabaseClient();
-      const { data: userData } = await client.auth.getUser();
-      const user = userData?.user;
-      if (!user) return compressedDataUrl;
+    const uploaded = await uploadDataUrlToStorage(
+      compressedDataUrl,
+      `${codigoRelatorio}/${prefix}-${Date.now()}.jpg`
+    );
+    return uploaded || compressedDataUrl;
+  },
 
-      const res = await fetch(compressedDataUrl);
-      const blob = await res.blob();
-      const filePath = `${user.id}/${codigoRelatorio}/${prefix}-${Date.now()}.jpg`;
+  async syncReportWithMedia(report) {
+    let resolvedReport = report;
 
-      const { error: uploadError } = await client.storage
-        .from('relatorios-midia')
-        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+    if (navigator.onLine !== false && isSupabaseConfigured()) {
+      let fachadaUrl = report.fachadaUrl;
+      let changed = false;
 
-      if (uploadError) {
-        console.warn('Fallback para imagem local (bucket relatorios-midia):', uploadError.message);
-        return compressedDataUrl;
+      if (fachadaUrl && String(fachadaUrl).startsWith('data:image/')) {
+        const upFacade = await uploadDataUrlToStorage(
+          fachadaUrl,
+          `${report.codigoRelatorio}/fachada-${Date.now()}.jpg`
+        );
+        if (upFacade) {
+          fachadaUrl = upFacade;
+          changed = true;
+        }
       }
 
-      const { data: signed } = await client.storage
-        .from('relatorios-midia')
-        .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+      const nextPhotos = await Promise.all(
+        (report.registrosFotograficos || []).map(async (slot) => {
+          if (!slot?.fotoUrl || !String(slot.fotoUrl).startsWith('data:image/')) {
+            return slot;
+          }
+          const upSlot = await uploadDataUrlToStorage(
+            slot.fotoUrl,
+            `${report.codigoRelatorio}/item-${slot.ordem}-${Date.now()}.jpg`
+          );
+          if (upSlot) {
+            changed = true;
+            return { ...slot, fotoUrl: upSlot };
+          }
+          return slot;
+        })
+      );
 
-      return signed?.signedUrl || compressedDataUrl;
-    } catch {
-      return compressedDataUrl;
+      if (changed) {
+        resolvedReport = {
+          ...report,
+          fachadaUrl,
+          registrosFotograficos: nextPhotos
+        };
+      }
     }
+
+    const synced = await this.syncReportToSupabase(resolvedReport);
+    return { synced, resolvedReport };
+  },
+
+  async hydrateFromIndexedDb() {
+    const idbReports = await OfflineStore.loadCache('reports', null);
+    if (Array.isArray(idbReports) && (!reportsMemoryCache || idbReports.length >= reportsMemoryCache.length)) {
+      reportsMemoryCache = idbReports;
+      safeLocalStorageSet(LS_REPORTS_KEY, JSON.stringify(idbReports));
+    }
+    return this.getReports();
   },
 
   async saveReport(report) {
@@ -334,27 +372,76 @@ export const ReportService = {
       nextList = [updated, ...current];
     }
     saveStoredReports(nextList);
+    await OfflineStore.enqueueReportUpsert(updated.codigoRelatorio);
 
-    try {
-      const synced = await this.syncReportToSupabase(updated);
-      if (synced?.id) {
-        nextList = nextList.map((r) =>
-          r.codigoRelatorio === updated.codigoRelatorio
-            ? {
-                ...r,
-                id: synced.id,
-                supabaseId: synced.id,
-                inspecaoId: synced.inspecao_id ?? r.inspecaoId
-              }
-            : r
-        );
-        saveStoredReports(nextList);
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        const { synced, resolvedReport } = await this.syncReportWithMedia(updated);
+        if (synced?.id) {
+          nextList = nextList.map((r) =>
+            r.codigoRelatorio === updated.codigoRelatorio
+              ? {
+                  ...r,
+                  ...resolvedReport,
+                  id: synced.id,
+                  supabaseId: synced.id,
+                  inspecaoId: synced.inspecao_id ?? r.inspecaoId
+                }
+              : r
+          );
+          saveStoredReports(nextList);
+          await OfflineStore.dequeueReportUpsert(updated.codigoRelatorio);
+        }
+      } catch (err) {
+        console.warn('Relatório salvo offline; aguardando sincronização:', err.message);
       }
-    } catch (err) {
-      console.warn('Relatório salvo localmente; Supabase:', err.message);
     }
 
     return nextList;
+  },
+
+  async flushPendingReport(codigoRelatorio) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const list = getStoredReports();
+    const report = list.find((r) => r.codigoRelatorio === codigoRelatorio);
+    if (!report) {
+      await OfflineStore.dequeueReportUpsert(codigoRelatorio);
+      return true;
+    }
+
+    const { synced, resolvedReport } = await this.syncReportWithMedia(report);
+    if (!synced?.id) return false;
+
+    const nextList = getStoredReports().map((r) =>
+      r.codigoRelatorio === codigoRelatorio
+        ? {
+            ...r,
+            ...resolvedReport,
+            id: synced.id,
+            supabaseId: synced.id,
+            inspecaoId: synced.inspecao_id ?? r.inspecaoId
+          }
+        : r
+    );
+    saveStoredReports(nextList);
+    await OfflineStore.dequeueReportUpsert(codigoRelatorio);
+    return true;
+  },
+
+  async flushPendingReportDelete(codigoRelatorio) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+    const { client } = getSupabaseClient();
+    if (!client) return false;
+    const { data: userData } = await client.auth.getUser();
+    if (!userData?.user) return false;
+
+    const { error } = await client
+      .from('relatorios_inspecao')
+      .delete()
+      .eq('codigo_relatorio', codigoRelatorio);
+    if (error) return false;
+    await OfflineStore.dequeueReportDelete(codigoRelatorio);
+    return true;
   },
 
   async deleteReport(report) {
@@ -362,16 +449,22 @@ export const ReportService = {
       (r) => r.id !== report.id && r.codigoRelatorio !== report.codigoRelatorio
     );
     saveStoredReports(nextList);
+    await OfflineStore.enqueueReportDelete(report.codigoRelatorio);
 
-    if (isSupabaseConfigured() && (report.supabaseId || !String(report.id).startsWith('local-'))) {
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
       try {
         const { client } = getSupabaseClient();
-        await client
-          .from('relatorios_inspecao')
-          .delete()
-          .eq('codigo_relatorio', report.codigoRelatorio);
+        if (client) {
+          const { error } = await client
+            .from('relatorios_inspecao')
+            .delete()
+            .eq('codigo_relatorio', report.codigoRelatorio);
+          if (!error) {
+            await OfflineStore.dequeueReportDelete(report.codigoRelatorio);
+          }
+        }
       } catch (err) {
-        console.warn('Erro ao remover relatório no Supabase:', err.message);
+        console.warn('Exclusão de relatório aguardando conexão:', err.message);
       }
     }
 
@@ -379,7 +472,7 @@ export const ReportService = {
   },
 
   async loadFromSupabase() {
-    if (!isSupabaseConfigured()) return getStoredReports();
+    if (!isSupabaseConfigured() || navigator.onLine === false) return getStoredReports();
     const { client } = getSupabaseClient();
     if (!client) return getStoredReports();
 
@@ -388,6 +481,7 @@ export const ReportService = {
 
     const activeUid = localStorage.getItem(LS_ACTIVE_UID_KEY);
     if (activeUid && activeUid !== userData.user.id) {
+      reportsMemoryCache = null;
       this.clearLocalCache();
     }
 
@@ -498,8 +592,29 @@ export const ReportService = {
       };
     });
 
-    saveStoredReports(mapped);
-    return mapped;
+    // Preservar relatórios alterados/excluídos offline até o envio ser concluído
+    const pending = OfflineStore.getPendingIndex();
+    const deletedSet = new Set(pending.deleteReports);
+    const dirtySet = new Set(pending.upsertReports);
+    const localReports = getStoredReports();
+    const localByCode = new Map(localReports.map((r) => [r.codigoRelatorio, r]));
+
+    const mergedRemote = mapped
+      .filter((remoteRep) => !deletedSet.has(remoteRep.codigoRelatorio))
+      .map((remoteRep) =>
+        dirtySet.has(remoteRep.codigoRelatorio) && localByCode.has(remoteRep.codigoRelatorio)
+          ? localByCode.get(remoteRep.codigoRelatorio)
+          : remoteRep
+      );
+
+    const seenCodes = new Set(mergedRemote.map((r) => r.codigoRelatorio));
+    const localOnlyPending = localReports.filter(
+      (r) => dirtySet.has(r.codigoRelatorio) && !seenCodes.has(r.codigoRelatorio)
+    );
+    const finalReports = [...localOnlyPending, ...mergedRemote];
+
+    saveStoredReports(finalReports);
+    return finalReports;
   },
 
   async syncReportToSupabase(report) {

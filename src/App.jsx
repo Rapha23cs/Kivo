@@ -11,6 +11,8 @@ import ReportsModule from './components/reports/ReportsModule';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase/supabaseConfig';
 import { DataService } from './supabase/dataService';
 import { ReportService } from './supabase/reportService';
+import { OfflineStore } from './offline/offlineStore';
+import { SyncEngine } from './offline/syncEngine';
 
 export default function App() {
   const supabaseEnabled = isSupabaseConfigured();
@@ -30,14 +32,40 @@ export default function App() {
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [pendingSyncCount, setPendingSyncCount] = useState(() => OfflineStore.getPendingCount());
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncNow = async () => {
+    if (!supabaseEnabled || navigator.onLine === false) return;
+    setIsSyncing(true);
+    try {
+      const result = await SyncEngine.flushQueue();
+      setOrders(result.orders);
+      setReports(result.reports);
+      setUserProfile(result.profile);
+      setPendingSyncCount(result.pendingCount);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const loadAllData = async () => {
+    await Promise.all([
+      DataService.hydrateFromIndexedDb(),
+      ReportService.hydrateFromIndexedDb()
+    ]);
+
     setUserProfile(DataService.getUserProfile());
     setOrders(DataService.getOrders());
     setReports(ReportService.getReports());
     setClients(DataService.getClients());
 
-    if (supabaseEnabled) {
+    if (supabaseEnabled && navigator.onLine !== false) {
+      if (OfflineStore.getPendingCount() > 0) {
+        await handleSyncNow();
+      }
+
       try {
         const remote = await DataService.loadFromSupabase();
         if (remote?.orders) setOrders(remote.orders);
@@ -54,6 +82,29 @@ export default function App() {
       }
     }
   };
+
+  useEffect(() => {
+    const unsubscribePending = OfflineStore.subscribe((count) => {
+      setPendingSyncCount(count);
+    });
+
+    const onOnline = () => {
+      setIsOnline(true);
+      handleSyncNow();
+    };
+    const onOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+
+    return () => {
+      unsubscribePending();
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [supabaseEnabled]);
 
   useEffect(() => {
     if (!supabaseEnabled) {
@@ -241,6 +292,10 @@ export default function App() {
           onOpenProfile={() => setIsProfileModalOpen(true)}
           onOpenMenu={() => setIsMobileMenuOpen(true)}
           userProfile={userProfile}
+          isOnline={isOnline}
+          pendingSyncCount={pendingSyncCount}
+          isSyncing={isSyncing}
+          onSyncNow={handleSyncNow}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8">
