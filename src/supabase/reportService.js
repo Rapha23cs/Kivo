@@ -164,6 +164,7 @@ export const ReportService = {
 
     return {
       ...base,
+      discipline: order.discipline || 'meio_ambiente',
       codigoRelatorio: `REL-${cleanOrderId}-${year}-${String(Date.now()).slice(-3)}`,
       clienteNome: order.clientName || 'Cliente',
       unidade: order.hospitalName || '',
@@ -263,6 +264,7 @@ export const ReportService = {
 
     return {
       ...existingReport,
+      discipline: order.discipline || existingReport.discipline || 'meio_ambiente',
       clienteNome: order.clientName || existingReport.clienteNome,
       unidade: order.hospitalName || existingReport.unidade,
       cidade: order.municipio || existingReport.cidade,
@@ -592,6 +594,7 @@ export const ReportService = {
         sinteseDesvios: row.sintese_desvios || '',
         conclusaoTexto: row.conclusao_texto || '',
         status: row.status || 'rascunho',
+        discipline: row.disciplina || 'meio_ambiente',
         unidadeId: row.unidade_id || null,
         inspecaoId: row.inspecao_id || null,
         inspecaoCodigo: row.inspecoes?.codigo_kivo || '',
@@ -732,6 +735,7 @@ export const ReportService = {
       sintese_desvios: report.sinteseDesvios || null,
       conclusao_texto: report.conclusaoTexto || null,
       status: report.status === 'finalizado' ? 'finalizado' : 'rascunho',
+      disciplina: report.discipline === 'seguranca_trabalho' ? 'seguranca_trabalho' : 'meio_ambiente',
       ...(isUuid(report.publicToken) ? { public_token: report.publicToken } : {}),
       public_enabled: Boolean(report.publicEnabled),
       ...(report.publicSharedAt ? { public_shared_at: report.publicSharedAt } : {})
@@ -761,7 +765,7 @@ export const ReportService = {
         incluir_no_relatorio: f.incluirNoRelatorio !== false
       }));
 
-    // Tenta persistência transacional via RPC (migration 005 / 006)
+    // Tenta persistência transacional via RPC (migration 005 / 006 / 008)
     const { data: rpcData, error: rpcError } = await client.rpc('sync_relatorio_completo', {
       p_header: headerPayload,
       p_desvios: desviosPayload,
@@ -781,7 +785,8 @@ export const ReportService = {
       rpcError.message?.includes('sync_relatorio_completo') ||
       rpcError.message?.includes('Could not find the function') ||
       rpcError.message?.includes('unidade_id') ||
-      rpcError.message?.includes('public_');
+      rpcError.message?.includes('public_') ||
+      rpcError.message?.includes('disciplina');
 
     if (rpcError && !canFallbackFromRpc) {
       throw new Error(rpcError.message);
@@ -811,10 +816,12 @@ export const ReportService = {
       (headerError.code === 'PGRST204' ||
         headerError.code === '42703' ||
         headerError.message?.includes('unidade_id') ||
-        headerError.message?.includes('public_'))
+        headerError.message?.includes('public_') ||
+        headerError.message?.includes('disciplina'))
     ) {
       const {
         unidade_id: _u,
+        disciplina: _d,
         public_token: _pt,
         public_enabled: _pe,
         public_shared_at: _ps,

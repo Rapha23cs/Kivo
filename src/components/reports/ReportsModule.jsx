@@ -22,6 +22,7 @@ import ReportEditorModal from './ReportEditorModal';
 import ReportPrintView from './ReportPrintView';
 import { calculateAdherenceLevel } from '../../data/reportTemplateData';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
+import { getDisciplineMeta } from '../../data/workflowsConfig';
 import { ReportService } from '../../supabase/reportService';
 
 export default function ReportsModule({
@@ -128,10 +129,10 @@ export default function ReportsModule({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-[#F4F4F5] tracking-tight">
-            Relatórios Técnicos de Inspeção Ambiental
+            Relatórios Técnicos de Vistoria
           </h2>
           <p className="text-xs text-[#71717A] mt-0.5">
-            Todo relatório é gerado e atualizado a partir de uma Vistoria com Checklist preenchido
+            Todo relatório nasce vinculado a uma Vistoria (Meio Ambiente ou Segurança do Trabalho) com checklist preenchido
           </p>
         </div>
 
@@ -306,6 +307,15 @@ export default function ReportsModule({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-[11px] font-semibold text-[#34D399] bg-[#0D0E10] px-2.5 py-0.5 rounded border border-[#232429]">
                         {rep.codigoRelatorio}
+                      </span>
+                      <span
+                        className={`text-[10px] font-medium px-2 py-0.5 rounded border ${
+                          (rep.discipline || linkedOrder?.discipline || 'meio_ambiente') === 'seguranca_trabalho'
+                            ? 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30'
+                            : 'bg-[#181A20] text-[#A1A1AA] border-[#2D2F36]'
+                        }`}
+                      >
+                        {getDisciplineMeta(rep.discipline || linkedOrder?.discipline).shortLabel}
                       </span>
                       <Badge variant={rep.status === 'finalizado' ? 'success' : 'warning'} size="sm">
                         {rep.status === 'finalizado' ? 'Finalizado' : 'Rascunho'}

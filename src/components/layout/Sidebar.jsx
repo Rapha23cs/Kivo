@@ -73,7 +73,7 @@ export default function Sidebar({
       <div>
         {/* Brand Logo */}
         <div className="h-16 flex items-center justify-between gap-3 px-5 border-b border-[#1F2024]">
-          <KivoLogo size="md" subtitle="Inspeções Ambientais" />
+          <KivoLogo size="md" subtitle="Vistorias & Relatórios" />
 
           {onClose && (
             <button

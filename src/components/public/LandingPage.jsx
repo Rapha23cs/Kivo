@@ -149,7 +149,7 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
                 KIVO
               </span>
               <span className="text-[10px] font-mono text-[#34D399] uppercase tracking-wider block mt-0.5">
-                Inspeções Ambientais
+                Vistorias &amp; Relatórios
               </span>
             </div>
           </a>
@@ -192,16 +192,16 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
           <div className="lg:col-span-7 space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#122620] border border-[#2EB88A]/35 text-[#34D399] text-xs font-medium">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Plataforma para Responsáveis Técnicos &amp; Auditorias</span>
+              <span>Meio Ambiente (Ativo) &amp; Segurança do Trabalho (Em breve)</span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#F4F4F5] leading-[1.12]">
               Da vistoria em campo ao{' '}
-              <span className="text-[#34D399]">laudo ambiental validado</span>, mesmo sem internet.
+              <span className="text-[#34D399]">laudo técnico validado</span>, mesmo sem internet.
             </h1>
 
             <p className="text-sm sm:text-base text-[#A1A1AA] leading-relaxed max-w-2xl">
-              Padronize inspeções sanitárias e ambientais com checklist completo, registro fotográfico carimbado, geração de relatórios PDF e compartilhamento seguro com seus clientes.
+              Padronize vistorias de Meio Ambiente e Segurança do Trabalho em um fluxo único: inicie a vistoria, preencha o checklist em campo e vincule para emitir o relatório PDF e link público.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">

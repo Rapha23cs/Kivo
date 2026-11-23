@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Calendar, Building2, User, ClipboardList, AlertCircle } from 'lucide-react';
+import { X, Plus, Calendar, Building2, User, ClipboardList, AlertCircle, Leaf, HardHat, Lock } from 'lucide-react';
 import { DataService } from '../../supabase/dataService';
 import { useFeedback } from '../common/FeedbackProvider';
+import { WORK_DISCIPLINES, getDisciplineMeta } from '../../data/workflowsConfig';
 
 export default function NewWorkOrderModal({
   isOpen,
@@ -16,6 +17,7 @@ export default function NewWorkOrderModal({
   if (!isOpen) return null;
 
   const { toast } = useFeedback();
+  const [discipline, setDiscipline] = useState('meio_ambiente');
   const [selectedUnitId, setSelectedUnitId] = useState(initialUnit?.id || '');
   const [clientName, setClientName] = useState(
     initialUnit?.clienteNome || clients[0]?.nome || ''
@@ -26,6 +28,8 @@ export default function NewWorkOrderModal({
   const [inspectionType, setInspectionType] = useState('Programada');
   const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().split('T')[0]);
   const [saveUnitToCatalog, setSaveUnitToCatalog] = useState(true);
+
+  const selectedDisciplineMeta = getDisciplineMeta(discipline);
 
   useEffect(() => {
     if (initialUnit) {
@@ -51,10 +55,18 @@ export default function NewWorkOrderModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedDisciplineMeta?.available) {
+      toast.info({
+        title: `${selectedDisciplineMeta.label} em implementação`,
+        message: 'Este fluxo será liberado na próxima etapa. Selecione Meio Ambiente para iniciar agora.'
+      });
+      return;
+    }
+
     if (!hospitalName.trim() || !regional.trim() || !municipio.trim()) {
       toast.warning({
         title: 'Campos obrigatórios',
-        message: 'Preencha Unidade, Regional e Município para criar a inspeção.'
+        message: 'Preencha Unidade, Regional e Município para criar a vistoria.'
       });
       return;
     }
@@ -85,9 +97,10 @@ export default function NewWorkOrderModal({
     const items = baseItems.map((i) => ({ ...i, status: null }));
 
     const newOrderData = {
+      discipline,
       clientName: clientName.trim() || 'Cliente',
       unidadeId: resolvedUnitId,
-      title: `Inspeção Ambiental — ${hospitalName.trim()}`,
+      title: `Vistoria (${selectedDisciplineMeta.label}) — ${hospitalName.trim()}`,
       hospitalName: hospitalName.trim(),
       regional: regional.trim(),
       municipio: municipio.trim(),
@@ -100,7 +113,7 @@ export default function NewWorkOrderModal({
     onCreateOrder(newOrderData);
     toast.success({
       title: 'Vistoria criada',
-      message: `${newOrderData.hospitalName} • 63 itens carregados.`
+      message: `${selectedDisciplineMeta.label} • ${newOrderData.hospitalName} (${items.length} itens).`
     });
     onClose();
   };
@@ -115,8 +128,8 @@ export default function NewWorkOrderModal({
               <Plus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-[#F4F4F5]">Nova Inspeção Ambiental</h3>
-              <p className="text-xs text-[#71717A]">Checklist com 11 temáticas e 63 itens salvos no Supabase</p>
+              <h3 className="font-semibold text-[#F4F4F5]">Iniciar Nova Vistoria</h3>
+              <p className="text-xs text-[#71717A]">Escolha o fluxo de trabalho e preencha os dados da unidade</p>
             </div>
           </div>
           <button
@@ -130,6 +143,68 @@ export default function NewWorkOrderModal({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto flex-1">
+          {/* Seletor Obrigatório de Fluxo de Trabalho */}
+          <div className="space-y-2">
+            <label className="block font-semibold text-[#F4F4F5] text-xs">
+              1. Fluxo de Trabalho (Área da Vistoria) *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {WORK_DISCIPLINES.map((flow) => {
+                const selected = discipline === flow.id;
+                const Icon = flow.id === 'meio_ambiente' ? Leaf : HardHat;
+                return (
+                  <button
+                    key={flow.id}
+                    type="button"
+                    onClick={() => setDiscipline(flow.id)}
+                    className={`text-left rounded-xl p-3 border transition space-y-1.5 ${
+                      selected
+                        ? flow.available
+                          ? 'bg-[#122620] border-[#2EB88A] shadow-sm'
+                          : 'bg-[#221A10] border-[#F59E0B]/60'
+                        : 'bg-[#141518] border-[#232429] hover:border-[#32343C]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 font-semibold text-[#F4F4F5] text-xs">
+                        <Icon
+                          className={`w-4 h-4 ${
+                            flow.id === 'meio_ambiente' ? 'text-[#34D399]' : 'text-[#FBBF24]'
+                          }`}
+                        />
+                        {flow.label}
+                      </span>
+                      <span
+                        className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border ${
+                          flow.available
+                            ? 'bg-[#0D0E10] text-[#34D399] border-[#2EB88A]/30'
+                            : 'bg-[#17140F] text-[#FBBF24] border-[#F59E0B]/30'
+                        }`}
+                      >
+                        {flow.statusBadge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#A1A1AA] leading-snug">{flow.checklistSummary}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {!selectedDisciplineMeta?.available && (
+              <div className="bg-[#221A10] border border-[#F59E0B]/40 rounded-xl p-3.5 text-[#FBBF24] text-xs flex items-start gap-2.5">
+                <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold">
+                    Fluxo de Segurança do Trabalho em preparação
+                  </p>
+                  <p className="text-[11px] text-[#E4E4E7] leading-relaxed">
+                    O checklist técnico e os modelos de relatório de <strong>Segurança do Trabalho</strong> serão implementados na próxima etapa. Selecione <strong>Meio Ambiente</strong> acima para iniciar uma vistoria agora.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {units.length > 0 && (
             <div className="bg-[#141518] border border-[#2EB88A]/30 rounded-xl p-3 space-y-1.5">
               <label className="block font-medium text-[#34D399] flex items-center gap-1.5">
@@ -290,10 +365,20 @@ export default function NewWorkOrderModal({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-semibold bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg transition flex items-center gap-1.5"
+              disabled={!selectedDisciplineMeta?.available}
+              className="px-5 py-2 text-xs font-semibold bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-45 disabled:cursor-not-allowed text-[#09090B] rounded-lg transition flex items-center gap-1.5"
             >
-              <Plus className="w-4 h-4" />
-              Criar Inspeção
+              {selectedDisciplineMeta?.available ? (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Criar Vistoria ({selectedDisciplineMeta.label})
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  Em implementação
+                </>
+              )}
             </button>
           </div>
         </form>

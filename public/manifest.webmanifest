@@ -1,7 +1,7 @@
 {
-  "name": "Kivo — Inspeções & Relatórios Ambientais",
+  "name": "Kivo — Vistorias & Relatórios Técnicos",
   "short_name": "Kivo",
-  "description": "Auditorias ambientais, checklists e relatórios técnicos com funcionamento offline.",
+  "description": "Sistema de vistorias e relatórios técnicos de Meio Ambiente e Segurança do Trabalho com modo offline.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

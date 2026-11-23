@@ -3,7 +3,7 @@ import React from 'react';
 export default function KivoLogo({
   size = 'md',
   showText = true,
-  subtitle = 'Inspeções Ambientais',
+  subtitle = 'Vistorias & Relatórios',
   darkText = false
 }) {
   const iconSizes = {

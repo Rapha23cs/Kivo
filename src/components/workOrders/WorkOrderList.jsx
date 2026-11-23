@@ -16,6 +16,7 @@ import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { ORDER_STATUS_META, getOrderStatusMeta } from '../../utils/kivoHelpers';
+import { WORK_DISCIPLINES, getDisciplineMeta } from '../../data/workflowsConfig';
 
 export default function WorkOrderList({
   orders,
@@ -28,6 +29,7 @@ export default function WorkOrderList({
   const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [disciplineFilter, setDisciplineFilter] = useState('all');
   const [inspectionTypeFilter, setInspectionTypeFilter] = useState('all');
   const [viewMode, setViewMode] = useState('list');
   const [draggingOrderId, setDraggingOrderId] = useState(null);
@@ -69,10 +71,12 @@ export default function WorkOrderList({
       (order.municipio || '').toLowerCase().includes(q);
 
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const matchesDiscipline =
+      disciplineFilter === 'all' || (order.discipline || 'meio_ambiente') === disciplineFilter;
     const matchesInspectionType =
       inspectionTypeFilter === 'all' || (order.inspectionType || 'Programada') === inspectionTypeFilter;
 
-    return matchesSearch && matchesStatus && matchesInspectionType;
+    return matchesSearch && matchesStatus && matchesDiscipline && matchesInspectionType;
   });
 
   return (
@@ -84,7 +88,7 @@ export default function WorkOrderList({
             Vistorias & Checklists
           </h2>
           <p className="text-xs text-[#71717A]">
-            Inspeções ambientais cadastradas no Supabase com 11 temáticas e 63 itens
+            Vistorias técnicas por fluxo de trabalho (Meio Ambiente e Segurança do Trabalho)
           </p>
         </div>
 
@@ -146,6 +150,21 @@ export default function WorkOrderList({
 
           <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
             <select
+              value={disciplineFilter}
+              onChange={(e) => setDisciplineFilter(e.target.value)}
+              className="bg-transparent text-[#E4E4E7] focus:outline-none cursor-pointer"
+            >
+              <option value="all" className="bg-[#141518] text-[#F4F4F5]">Todos os Fluxos</option>
+              {WORK_DISCIPLINES.map((d) => (
+                <option key={d.id} value={d.id} className="bg-[#141518] text-[#F4F4F5]">
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
+            <select
               value={inspectionTypeFilter}
               onChange={(e) => setInspectionTypeFilter(e.target.value)}
               className="bg-transparent text-[#E4E4E7] focus:outline-none cursor-pointer"
@@ -182,6 +201,15 @@ export default function WorkOrderList({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono text-xs font-semibold text-[#F4F4F5]">
                           {order.id}
+                        </span>
+                        <span
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-medium border ${
+                            (order.discipline || 'meio_ambiente') === 'seguranca_trabalho'
+                              ? 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30'
+                              : 'bg-[#181A20] text-[#A1A1AA] border-[#2D2F36]'
+                          }`}
+                        >
+                          {getDisciplineMeta(order.discipline).shortLabel}
                         </span>
                         {order.inspectionType && (
                           <span
@@ -287,8 +315,17 @@ export default function WorkOrderList({
                         onClick={() => onOpenOrder(order)}
                       >
                         <td className="py-3.5 px-4 font-mono font-semibold text-[#F4F4F5]">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{order.id}</span>
+                            <span
+                              className={`text-[9px] px-1.5 py-0.5 rounded font-sans font-medium border ${
+                                (order.discipline || 'meio_ambiente') === 'seguranca_trabalho'
+                                  ? 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30'
+                                  : 'bg-[#181A20] text-[#A1A1AA] border-[#2D2F36]'
+                              }`}
+                            >
+                              {getDisciplineMeta(order.discipline).shortLabel}
+                            </span>
                             {order.inspectionType && (
                               <span
                                 className={`text-[9px] px-1.5 py-0.5 rounded font-sans font-medium border ${

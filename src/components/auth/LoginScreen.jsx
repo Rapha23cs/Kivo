@@ -273,49 +273,49 @@ export default function LoginScreen({
 
         {/* Marca */}
         <div className="relative z-10">
-          <KivoLogo size="lg" subtitle="Auditoria & Inspeção Ambiental" />
+          <KivoLogo size="lg" subtitle="Vistorias & Relatórios Técnicos" />
         </div>
 
-        {/* Proposta de Valor + Mini Preview do Checklist */}
+        {/* Proposta de Valor + Mini Preview dos Fluxos */}
         <div className="relative z-10 space-y-6 my-auto py-8 max-w-md">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#122620] border border-[#2EB88A]/30 text-[#34D399] text-[11px] font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />
-              Plataforma Multi-Auditor
+              Meio Ambiente &amp; Segurança do Trabalho
             </div>
             <h2 className="text-2xl xl:text-3xl font-semibold text-[#F4F4F5] tracking-tight leading-snug">
-              Inspeções ambientais estruturadas, da vistoria em campo ao laudo técnico.
+              Vistorias e relatórios estruturados, da visita em campo ao laudo técnico.
             </h2>
             <p className="text-sm text-[#A1A1AA] leading-relaxed">
-              Cada responsável técnico possui espaço isolado para registrar não conformidades, planos de ação e evidências fotográficas com segurança.
+              Inicie sua vistoria escolhendo o fluxo de trabalho, preencha o checklist em campo e vincule para concluir o relatório técnico com segurança.
             </p>
           </div>
 
-          {/* Card resumo minimalista no mesmo estilo do dashboard */}
+          {/* Card resumo minimalista dos dois fluxos */}
           <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between text-xs border-b border-[#1F2024] pb-2.5">
               <span className="text-[#E4E4E7] font-medium flex items-center gap-2">
                 <ClipboardCheck className="w-4 h-4 text-[#34D399]" />
-                Checklist Ambiental Completo
+                Fluxos de Vistoria &amp; Checklist
               </span>
-              <span className="font-mono text-[11px] text-[#34D399]">63 itens</span>
+              <span className="font-mono text-[11px] text-[#34D399]">2 áreas</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2.5 text-center">
-              <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-2.5">
-                <Layers className="w-3.5 h-3.5 text-[#A1A1AA] mx-auto mb-1" />
-                <span className="text-base font-semibold text-[#F4F4F5] font-mono block">11</span>
-                <span className="text-[10px] text-[#71717A]">Temáticas</span>
+              <div className="bg-[#0D0E10] border border-[#2EB88A]/30 rounded-lg p-2.5">
+                <Layers className="w-3.5 h-3.5 text-[#34D399] mx-auto mb-1" />
+                <span className="text-sm font-semibold text-[#F4F4F5] block">Ambiente</span>
+                <span className="text-[10px] text-[#34D399]">Ativo (63 itens)</span>
               </div>
               <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-2.5">
-                <FileCheck2 className="w-3.5 h-3.5 text-[#34D399] mx-auto mb-1" />
-                <span className="text-base font-semibold text-[#F4F4F5] font-mono block">Regra 6</span>
-                <span className="text-[10px] text-[#71717A]">Desvios</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-[#FBBF24] mx-auto mb-1" />
+                <span className="text-sm font-semibold text-[#F4F4F5] block">Segurança</span>
+                <span className="text-[10px] text-[#FBBF24]">Em breve (SST)</span>
               </div>
               <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-2.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#A1A1AA] mx-auto mb-1" />
-                <span className="text-base font-semibold text-[#F4F4F5] font-mono block">RDC-50</span>
-                <span className="text-[10px] text-[#71717A]">NR-32 / 20</span>
+                <FileCheck2 className="w-3.5 h-3.5 text-[#A1A1AA] mx-auto mb-1" />
+                <span className="text-sm font-semibold text-[#F4F4F5] font-mono block">PDF + QR</span>
+                <span className="text-[10px] text-[#71717A]">Laudo Vinculado</span>
               </div>
             </div>
           </div>

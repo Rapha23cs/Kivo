@@ -1086,6 +1086,7 @@ export const DataService = {
         cliente_id,
         cliente_nome,
         unidade_id,
+        disciplina,
         unidade,
         regional,
         municipio,
@@ -1108,7 +1109,14 @@ export const DataService = {
       .order('data_inspecao', { ascending: false })
       .order('created_at', { ascending: false });
 
-    if (error && (error.code === 'PGRST204' || error.message?.includes('cliente_') || error.message?.includes('unidade_id'))) {
+    if (
+      error &&
+      (error.code === 'PGRST204' ||
+        error.code === '42703' ||
+        error.message?.includes('cliente_') ||
+        error.message?.includes('unidade_id') ||
+        error.message?.includes('disciplina'))
+    ) {
       const retry = await client
         .from('inspecoes')
         .select(`
@@ -1169,9 +1177,10 @@ export const DataService = {
       return {
         id: insp.codigo_kivo,
         supabaseId: insp.id,
+        discipline: insp.disciplina || 'meio_ambiente',
         clientName: insp.cliente_nome || '',
         unidadeId: insp.unidade_id || null,
-        title: `Inspeção Ambiental — ${insp.unidade}`,
+        title: `Vistoria (${insp.disciplina === 'seguranca_trabalho' ? 'Segurança do Trabalho' : 'Meio Ambiente'}) — ${insp.unidade}`,
         hospitalName: insp.unidade,
         regional: insp.regional,
         municipio: insp.municipio,
@@ -1292,14 +1301,24 @@ export const DataService = {
       return result;
     };
 
+    const disciplineValue = order.discipline === 'seguranca_trabalho' ? 'seguranca_trabalho' : 'meio_ambiente';
+
     let { data: inspecaoRow, error: inspecaoError } = await upsertInspecao({
       ...basePayload,
+      disciplina: disciplineValue,
       ...(clientName ? { cliente_nome: clientName } : {}),
       ...(clienteId ? { cliente_id: clienteId } : {}),
       ...(unidadeId ? { unidade_id: unidadeId } : {})
     });
 
-    if (inspecaoError && (inspecaoError.code === 'PGRST204' || inspecaoError.message?.includes('cliente_') || inspecaoError.message?.includes('unidade_id'))) {
+    if (
+      inspecaoError &&
+      (inspecaoError.code === 'PGRST204' ||
+        inspecaoError.code === '42703' ||
+        inspecaoError.message?.includes('cliente_') ||
+        inspecaoError.message?.includes('unidade_id') ||
+        inspecaoError.message?.includes('disciplina'))
+    ) {
       const retry = await upsertInspecao({
         ...basePayload,
         ...(clientName ? { cliente_nome: clientName } : {}),

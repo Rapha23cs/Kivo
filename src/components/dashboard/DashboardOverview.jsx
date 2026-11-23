@@ -166,7 +166,7 @@ export default function DashboardOverview({
             Olá, {userProfile?.name || 'Auditor Técnico'}
           </h1>
           <p className="text-xs text-[#71717A] max-w-xl">
-            Visão consolidada das suas inspeções ambientais, desvios identificados e relatórios técnicos salvos no Supabase.
+            Visão consolidada das vistorias técnicas (Meio Ambiente e Segurança do Trabalho), desvios identificados e relatórios salvos no Supabase.
           </p>
         </div>
 

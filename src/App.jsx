@@ -418,10 +418,10 @@ export default function App() {
     if (supabaseEnabled && !session) {
       document.title = publicAuthMode
         ? 'Kivo — Acesso à Conta'
-        : 'Kivo — Inspeções & Relatórios Ambientais';
+        : 'Kivo — Vistorias & Relatórios Técnicos';
       return;
     }
-    document.title = TAB_TITLES[activeTab] || 'Kivo — Inspeções & Relatórios Ambientais';
+    document.title = TAB_TITLES[activeTab] || 'Kivo — Vistorias & Relatórios Técnicos';
   }, [isNotFound, publicReportToken, supabaseEnabled, recoveryMode, session, publicAuthMode, activeTab]);
 
   if (publicReportToken) {
