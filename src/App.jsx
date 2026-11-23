@@ -22,12 +22,20 @@ import LegalInfoModal from './components/common/LegalInfoModal';
 import LandingPage from './components/public/LandingPage';
 import PublicReportPortal from './components/public/PublicReportPortal';
 import PwaInstallBanner from './components/common/PwaInstallBanner';
+import ActionPlansModule from './components/actions/ActionPlansModule';
+import AgendaModule from './components/agenda/AgendaModule';
+import ChecklistTemplatesModal from './components/templates/ChecklistTemplatesModal';
+import { OperationsService, getExpiryStatus } from './supabase/operationsService';
+import { buildSstChecklist } from './data/sstChecklistData';
+import { getDisciplineMeta } from './data/workflowsConfig';
 
 const TAB_TITLES = {
   dashboard: 'Kivo — Meu Painel',
   orders: 'Kivo — Vistorias & Checklists',
+  actions: 'Kivo — Planos de Ação (5W2H)',
+  agenda: 'Kivo — Agenda & Recorrência',
   reports: 'Kivo — Relatórios Técnicos',
-  units: 'Kivo — Clientes & Unidades'
+  units: 'Kivo — Clientes, Unidades & SST'
 };
 
 function resolveInitialRoute() {
@@ -106,6 +114,12 @@ function resolveInitialRoute() {
   if (path === '/vistorias') {
     return { initialTab: 'orders', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
   }
+  if (path === '/acoes') {
+    return { initialTab: 'actions', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
+  }
+  if (path === '/agenda') {
+    return { initialTab: 'agenda', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
+  }
   if (path === '/relatorios') {
     return { initialTab: 'reports', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
   }
@@ -149,12 +163,16 @@ export default function App() {
   const [reports, setReports] = useState([]);
   const [clients, setClients] = useState([]);
   const [units, setUnits] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [sstItems, setSstItems] = useState([]);
 
   const [selectedClient, setSelectedClient] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pendingReportToOpen, setPendingReportToOpen] = useState(null);
   const [preselectedUnitForNewOrder, setPreselectedUnitForNewOrder] = useState(null);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -226,6 +244,9 @@ export default function App() {
     setReports(ReportService.getReports());
     setClients(DataService.getClients());
     setUnits(DataService.getUnits());
+    setTemplates(OperationsService.getTemplates());
+    setSchedules(OperationsService.getSchedules());
+    setSstItems(OperationsService.getSstItems());
 
     if (supabaseEnabled && navigator.onLine !== false) {
       if (OfflineStore.getPendingCount() > 0) {
@@ -246,6 +267,19 @@ export default function App() {
         if (remoteReports) setReports(remoteReports);
       } catch (err) {
         console.warn('Falha ao carregar relatórios do Supabase:', err.message);
+      }
+
+      try {
+        const [remTpl, remSch, remSst] = await Promise.all([
+          OperationsService.loadTemplatesFromSupabase(),
+          OperationsService.loadSchedulesFromSupabase(),
+          OperationsService.loadSstItemsFromSupabase()
+        ]);
+        setTemplates(remTpl);
+        setSchedules(remSch);
+        setSstItems(remSst);
+      } catch {
+        // segue cache local caso migration 009 não tenha rodado
       }
     }
   };
@@ -321,13 +355,132 @@ export default function App() {
     await client?.auth.signOut();
     DataService.syncSessionUser(null);
     ReportService.clearLocalCache();
+    OperationsService.clearLocalCaches();
     setSession(null);
     setOrders([]);
     setReports([]);
     setClients([]);
     setUnits([]);
+    setTemplates([]);
+    setSchedules([]);
+    setSstItems([]);
     setUserProfile(null);
     setSelectedOrder(null);
+  };
+
+  const handleSaveTemplate = async (tpl) => {
+    const next = await OperationsService.saveTemplate(tpl);
+    setTemplates(next);
+    return next;
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    const next = await OperationsService.deleteTemplate(id);
+    setTemplates(next);
+  };
+
+  const handleSaveSchedule = async (sch) => {
+    const next = await OperationsService.saveSchedule(sch);
+    setSchedules(next);
+    return next;
+  };
+
+  const handleDeleteSchedule = async (id) => {
+    const next = await OperationsService.deleteSchedule(id);
+    setSchedules(next);
+  };
+
+  const handleSaveSstItem = async (item) => {
+    const next = await OperationsService.saveSstItem(item);
+    setSstItems(next);
+    return next;
+  };
+
+  const handleDeleteSstItem = async (id) => {
+    const next = await OperationsService.deleteSstItem(id);
+    setSstItems(next);
+  };
+
+  const handleStartOrderFromSchedule = async (schedule) => {
+    if (!schedule) return;
+    const discipline = schedule.disciplina === 'seguranca_trabalho' ? 'seguranca_trabalho' : 'meio_ambiente';
+    const discMeta = getDisciplineMeta(discipline);
+    const matchedTemplate = schedule.templateId
+      ? templates.find((t) => t.id === schedule.templateId)
+      : null;
+
+    let items = [];
+    if (matchedTemplate) {
+      items = (matchedTemplate.itens || []).map((it, idx) => ({
+        id: it.id || `tpl-${matchedTemplate.id}-${idx + 1}`,
+        number: idx + 1,
+        topic: it.topic || 'Geral',
+        nrCode: it.nrCode || '',
+        question: it.question,
+        status: null,
+        classification: '',
+        riskProbability: 3,
+        riskSeverity: 3,
+        responsible: '',
+        deadline: '',
+        observation: '',
+        evidenceUrl: '',
+        afterPhotoUrl: '',
+        resolutionNote: '',
+        actionStatus: 'Em Aberto'
+      }));
+    } else if (discipline === 'seguranca_trabalho') {
+      items = buildSstChecklist(schedule.nrModules || ['nr01', 'nr06', 'nr23']);
+    } else {
+      items = DataService.getBaseChecklistItems().map((i) => ({
+        ...i,
+        status: null,
+        afterPhotoUrl: '',
+        resolutionNote: '',
+        actionStatus: 'Em Aberto'
+      }));
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const updatedOrders = DataService.createOrder(
+      {
+        discipline,
+        templateId: matchedTemplate?.id || '',
+        nrModules: schedule.nrModules || null,
+        scheduleId: schedule.id,
+        clientName: schedule.clienteNome || 'Cliente',
+        unidadeId: schedule.unidadeId || null,
+        title: `Vistoria (${discMeta.label}) — ${schedule.unidadeNome}`,
+        hospitalName: schedule.unidadeNome,
+        regional: schedule.regional || 'Regional',
+        municipio: schedule.municipio || 'Município',
+        inspectionType: 'Programada',
+        scheduledDate: todayStr,
+        technicianName: userProfile?.name || 'Auditor Técnico',
+        checklist: items
+      },
+      (_syncedId, patchedOrders) => {
+        setOrders(patchedOrders);
+      }
+    );
+
+    setOrders(updatedOrders);
+    const created = updatedOrders[0];
+    if (created) {
+      setSelectedOrder(created);
+    }
+
+    try {
+      const nextSchedules = await OperationsService.advanceScheduleAfterExecution(schedule, todayStr);
+      setSchedules(nextSchedules);
+    } catch {
+      // segue mesmo offline
+    }
+
+    toast.success({
+      title: 'Vistoria agendada iniciada',
+      message: `${discMeta.label} • ${schedule.unidadeNome}`
+    });
   };
 
   const handleSaveProfile = async (newProfile) => {
@@ -613,6 +766,29 @@ export default function App() {
   };
 
   const openOrdersCount = orders.filter((o) => o.status === 'open' || o.status === 'in_progress').length;
+  const openActionsCount = orders.reduce(
+    (acc, o) =>
+      acc +
+      (o.checklist || []).filter(
+        (it) => (it.status === 'nao' || it.status === 'nao_conforme') && (it.actionStatus || 'Em Aberto') !== 'Concluído'
+      ).length,
+    0
+  );
+  const dueAgendaCount = schedules.filter((s) => {
+    if (s.ativo === false) return false;
+    const st = getExpiryStatus(s.proximaData);
+    return st.status === 'vencido' || st.status === 'vence_hoje' || (st.daysRemaining !== null && st.daysRemaining <= 7);
+  }).length;
+
+  const displayedSchedules =
+    selectedClient === 'all'
+      ? schedules
+      : schedules.filter((s) => !s.clienteNome || s.clienteNome === selectedClient);
+
+  const displayedSstItems =
+    selectedClient === 'all'
+      ? sstItems
+      : sstItems.filter((x) => !x.clienteNome || x.clienteNome === selectedClient);
 
   return (
     <div className="flex h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] overflow-hidden font-sans">
@@ -621,13 +797,18 @@ export default function App() {
         onSelectTab={(tabId) => {
           if (tabId === 'profile') {
             setIsProfileModalOpen(true);
+          } else if (tabId === 'templates') {
+            setIsTemplatesModalOpen(true);
           } else {
             setActiveTab(tabId);
           }
         }}
         openOrdersCount={openOrdersCount}
+        openActionsCount={openActionsCount}
+        dueAgendaCount={dueAgendaCount}
         reportsCount={reports.length}
         unitsCount={units.length}
+        templatesCount={templates.length}
         userProfile={userProfile}
         onSignOut={supabaseEnabled ? handleSignOut : null}
         onOpenLegalModal={(tab) => setLegalModalTab(tab)}
@@ -679,9 +860,29 @@ export default function App() {
                   setPreselectedUnitForNewOrder(null);
                   setIsNewOrderModalOpen(true);
                 }}
+                onOpenTemplates={() => setIsTemplatesModalOpen(true)}
                 onDeleteOrder={handleDeleteOrder}
                 onUpdateOrderStatus={handleUpdateOrderStatus}
                 onRestoreOrder={handleRestoreOrder}
+              />
+            )}
+
+            {activeTab === 'actions' && (
+              <ActionPlansModule
+                orders={displayedOrders}
+                onUpdateOrder={handleUpdateOrder}
+                onOpenOrder={(order) => setSelectedOrder(order)}
+              />
+            )}
+
+            {activeTab === 'agenda' && (
+              <AgendaModule
+                schedules={displayedSchedules}
+                units={displayedUnits}
+                templates={templates}
+                onSaveSchedule={handleSaveSchedule}
+                onDeleteSchedule={handleDeleteSchedule}
+                onStartOrderFromSchedule={handleStartOrderFromSchedule}
               />
             )}
 
@@ -691,10 +892,13 @@ export default function App() {
                 clients={clients}
                 orders={displayedOrders}
                 reports={displayedReports}
+                sstItems={displayedSstItems}
                 onSaveUnit={handleSaveUnit}
                 onDeleteUnit={handleDeleteUnit}
                 onSaveClient={handleSaveClient}
                 onDeleteClient={handleDeleteClient}
+                onSaveSstItem={handleSaveSstItem}
+                onDeleteSstItem={handleDeleteSstItem}
                 onImportUnitsFromOrders={handleImportUnitsFromOrders}
                 onNewOrderForUnit={(unit) => {
                   setPreselectedUnitForNewOrder(unit);
@@ -761,8 +965,20 @@ export default function App() {
           onSaveUnit={handleSaveUnit}
           clients={clients}
           units={units}
+          templates={templates}
+          onOpenTemplates={() => setIsTemplatesModalOpen(true)}
           initialUnit={preselectedUnitForNewOrder}
           userProfile={userProfile}
+        />
+      )}
+
+      {isTemplatesModalOpen && (
+        <ChecklistTemplatesModal
+          isOpen={isTemplatesModalOpen}
+          templates={templates}
+          onSaveTemplate={handleSaveTemplate}
+          onDeleteTemplate={handleDeleteTemplate}
+          onClose={() => setIsTemplatesModalOpen(false)}
         />
       )}
 

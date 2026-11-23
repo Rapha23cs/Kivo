@@ -7,7 +7,10 @@ import {
   Activity,
   Award,
   LogOut,
-  X
+  X,
+  AlertOctagon,
+  Calendar,
+  SlidersHorizontal
 } from 'lucide-react';
 import KivoLogo from '../common/KivoLogo';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
@@ -16,8 +19,11 @@ export default function Sidebar({
   activeTab,
   onSelectTab,
   openOrdersCount = 0,
+  openActionsCount = 0,
+  dueAgendaCount = 0,
   reportsCount = 0,
   unitsCount = 0,
+  templatesCount = 0,
   userProfile,
   onSignOut,
   onOpenLegalModal,
@@ -29,7 +35,8 @@ export default function Sidebar({
       id: 'dashboard',
       label: 'Meu Painel',
       shortLabel: 'Painel',
-      icon: LayoutDashboard
+      icon: LayoutDashboard,
+      mobileBar: true
     },
     {
       id: 'orders',
@@ -37,7 +44,26 @@ export default function Sidebar({
       shortLabel: 'Vistorias',
       icon: ClipboardList,
       badge: openOrdersCount > 0 ? openOrdersCount : null,
-      badgeColor: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30'
+      badgeColor: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
+      mobileBar: true
+    },
+    {
+      id: 'actions',
+      label: 'Planos de Ação',
+      shortLabel: 'Ações',
+      icon: AlertOctagon,
+      badge: openActionsCount > 0 ? openActionsCount : null,
+      badgeColor: 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/30',
+      mobileBar: true
+    },
+    {
+      id: 'agenda',
+      label: 'Agenda & Recorrência',
+      shortLabel: 'Agenda',
+      icon: Calendar,
+      badge: dueAgendaCount > 0 ? dueAgendaCount : null,
+      badgeColor: 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30',
+      mobileBar: true
     },
     {
       id: 'reports',
@@ -45,21 +71,33 @@ export default function Sidebar({
       shortLabel: 'Relatórios',
       icon: FileBarChart2,
       badge: reportsCount > 0 ? reportsCount : null,
-      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]'
+      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+      mobileBar: true
     },
     {
       id: 'units',
-      label: 'Clientes & Unidades',
+      label: 'Clientes, Unidades & SST',
       shortLabel: 'Unidades',
       icon: Building2,
       badge: unitsCount > 0 ? unitsCount : null,
-      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]'
+      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+      mobileBar: false
+    },
+    {
+      id: 'templates',
+      label: 'Modelos de Checklist',
+      shortLabel: 'Modelos',
+      icon: SlidersHorizontal,
+      badge: templatesCount > 0 ? templatesCount : null,
+      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+      mobileBar: false
     },
     {
       id: 'profile',
       label: 'Minha Conta & RT',
       shortLabel: 'Conta',
-      icon: Award
+      icon: Award,
+      mobileBar: false
     }
   ];
 
@@ -234,7 +272,7 @@ export default function Sidebar({
         className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-[#111214]/95 backdrop-blur-md border-t border-[#1F2024] pb-safe"
       >
         <div className="grid grid-cols-5 gap-1 px-1.5 pt-1.5 pb-1">
-          {menuItems.map((item) => {
+          {menuItems.filter((item) => item.mobileBar).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (

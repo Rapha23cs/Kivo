@@ -10,7 +10,8 @@ import {
   CheckCircle2,
   Eye,
   Building2,
-  Trash2
+  Trash2,
+  ClipboardList
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -24,7 +25,8 @@ export default function WorkOrderList({
   onNewOrder,
   onDeleteOrder,
   onUpdateOrderStatus,
-  onRestoreOrder
+  onRestoreOrder,
+  onOpenTemplates
 }) {
   const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,6 +111,18 @@ export default function WorkOrderList({
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
+
+          {onOpenTemplates && (
+            <button
+              type="button"
+              onClick={onOpenTemplates}
+              className="flex items-center gap-1.5 px-3 py-2 bg-[#141518] hover:bg-[#1C1D22] text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
+              title="Criar ou duplicar modelos de checklist"
+            >
+              <ClipboardList className="w-3.5 h-3.5 text-[#34D399]" />
+              <span className="hidden sm:inline">Modelos</span>
+            </button>
+          )}
 
           <button
             onClick={onNewOrder}

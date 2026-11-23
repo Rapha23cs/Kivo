@@ -789,19 +789,32 @@ export const DataService = {
       const cleanOrderId = String(order.id || 'os').replace(/[^A-Za-z0-9-_]/g, '');
       const updatedChecklist = await Promise.all(
         checklist.map(async (item) => {
-          if (!item?.evidenceUrl || !String(item.evidenceUrl).startsWith('data:image/')) {
-            return item;
-          }
+          let nextItem = item;
           const cleanItemId = String(item.id || `item-${item.number}`).replace(/[^A-Za-z0-9-_]/g, '');
-          const uploadedUrl = await uploadDataUrlToStorage(
-            item.evidenceUrl,
-            `checklists/${cleanOrderId}/${cleanItemId}-${Date.now()}.jpg`
-          );
-          if (uploadedUrl) {
-            mediaChanged = true;
-            return { ...item, evidenceUrl: uploadedUrl };
+
+          if (item?.evidenceUrl && String(item.evidenceUrl).startsWith('data:image/')) {
+            const uploadedUrl = await uploadDataUrlToStorage(
+              item.evidenceUrl,
+              `checklists/${cleanOrderId}/${cleanItemId}-${Date.now()}.jpg`
+            );
+            if (uploadedUrl) {
+              mediaChanged = true;
+              nextItem = { ...nextItem, evidenceUrl: uploadedUrl };
+            }
           }
-          return item;
+
+          if (item?.afterPhotoUrl && String(item.afterPhotoUrl).startsWith('data:image/')) {
+            const uploadedAfterUrl = await uploadDataUrlToStorage(
+              item.afterPhotoUrl,
+              `checklists/${cleanOrderId}/${cleanItemId}-after-${Date.now()}.jpg`
+            );
+            if (uploadedAfterUrl) {
+              mediaChanged = true;
+              nextItem = { ...nextItem, afterPhotoUrl: uploadedAfterUrl };
+            }
+          }
+
+          return nextItem;
         })
       );
 
@@ -908,7 +921,9 @@ export const DataService = {
   },
 
   async deleteOrder(order) {
-    const mediaUrls = (order?.checklist || []).map((item) => item?.evidenceUrl).filter(Boolean);
+    const mediaUrls = (order?.checklist || [])
+      .flatMap((item) => [item?.evidenceUrl, item?.afterPhotoUrl])
+      .filter(Boolean);
     const nextOrders = this.getOrders().filter((o) => o.id !== order.id);
     persistOrdersCache(nextOrders);
     await OfflineStore.enqueueOrderDelete(order.id);
@@ -1087,6 +1102,10 @@ export const DataService = {
         cliente_nome,
         unidade_id,
         disciplina,
+        checklist_json,
+        template_id,
+        nr_modules,
+        schedule_id,
         unidade,
         regional,
         municipio,
@@ -1115,7 +1134,11 @@ export const DataService = {
         error.code === '42703' ||
         error.message?.includes('cliente_') ||
         error.message?.includes('unidade_id') ||
-        error.message?.includes('disciplina'))
+        error.message?.includes('disciplina') ||
+        error.message?.includes('checklist_json') ||
+        error.message?.includes('template_id') ||
+        error.message?.includes('nr_modules') ||
+        error.message?.includes('schedule_id'))
     ) {
       const retry = await client
         .from('inspecoes')
@@ -1157,27 +1180,49 @@ export const DataService = {
         respostasPorModelo.set(resp.item_modelo_id, resp);
       });
 
-      const checklist = canonicalBase.map((baseItem) => {
-        const modeloId =
-          modelMap.byCode.get(baseItem.id) ||
-          modelMap.byNumber.get(Number(baseItem.number));
-        const resp = modeloId ? respostasPorModelo.get(modeloId) : null;
+      const hasJsonChecklist = Array.isArray(insp.checklist_json) && insp.checklist_json.length > 0;
+      const checklist = hasJsonChecklist
+        ? insp.checklist_json.map((jsonItem, idx) => ({
+            ...jsonItem,
+            id: jsonItem.id || `item-${idx + 1}`,
+            number: Number(jsonItem.number) || idx + 1,
+            status: jsonItem.status ?? null,
+            classification: jsonItem.classification || '',
+            responsible: jsonItem.responsible || '',
+            deadline: jsonItem.deadline || '',
+            observation: jsonItem.observation || '',
+            evidenceUrl: jsonItem.evidenceUrl || '',
+            afterPhotoUrl: jsonItem.afterPhotoUrl || '',
+            resolutionNote: jsonItem.resolutionNote || '',
+            actionStatus: jsonItem.actionStatus || 'Em Aberto'
+          }))
+        : canonicalBase.map((baseItem) => {
+            const modeloId =
+              modelMap.byCode.get(baseItem.id) ||
+              modelMap.byNumber.get(Number(baseItem.number));
+            const resp = modeloId ? respostasPorModelo.get(modeloId) : null;
 
-        return {
-          ...baseItem,
-          status: resp?.status ?? null,
-          classification: resp?.classificacao || '',
-          responsible: resp?.responsavel || '',
-          deadline: resp?.prazo || '',
-          observation: resp?.observacao || '',
-          evidenceUrl: resp?.evidencia_path || ''
-        };
-      });
+            return {
+              ...baseItem,
+              status: resp?.status ?? null,
+              classification: resp?.classificacao || '',
+              responsible: resp?.responsavel || '',
+              deadline: resp?.prazo || '',
+              observation: resp?.observacao || '',
+              evidenceUrl: resp?.evidencia_path || '',
+              afterPhotoUrl: '',
+              resolutionNote: '',
+              actionStatus: 'Em Aberto'
+            };
+          });
 
       return {
         id: insp.codigo_kivo,
         supabaseId: insp.id,
         discipline: insp.disciplina || 'meio_ambiente',
+        templateId: insp.template_id || '',
+        nrModules: Array.isArray(insp.nr_modules) ? insp.nr_modules : null,
+        scheduleId: insp.schedule_id || null,
         clientName: insp.cliente_nome || '',
         unidadeId: insp.unidade_id || null,
         title: `Vistoria (${insp.disciplina === 'seguranca_trabalho' ? 'Segurança do Trabalho' : 'Meio Ambiente'}) — ${insp.unidade}`,
@@ -1194,12 +1239,13 @@ export const DataService = {
       };
     });
 
-    // Renovar URLs assinadas das evidências (7 dias de validade) ao carregar do Supabase
+    // Renovar URLs assinadas das evidências (Antes & Depois, 7 dias de validade) ao carregar do Supabase
     if (navigator.onLine !== false) {
       const allEvidenceUrls = [];
       mappedOrders.forEach((ord) => {
         (ord.checklist || []).forEach((item) => {
           if (item.evidenceUrl) allEvidenceUrls.push(item.evidenceUrl);
+          if (item.afterPhotoUrl) allEvidenceUrls.push(item.afterPhotoUrl);
         });
       });
       const refreshedMap = await refreshSignedMediaUrls(client, allEvidenceUrls);
@@ -1208,6 +1254,9 @@ export const DataService = {
           ord.checklist.forEach((item) => {
             if (item.evidenceUrl && refreshedMap.has(item.evidenceUrl)) {
               item.evidenceUrl = refreshedMap.get(item.evidenceUrl);
+            }
+            if (item.afterPhotoUrl && refreshedMap.has(item.afterPhotoUrl)) {
+              item.afterPhotoUrl = refreshedMap.get(item.afterPhotoUrl);
             }
           });
         });
@@ -1302,10 +1351,17 @@ export const DataService = {
     };
 
     const disciplineValue = order.discipline === 'seguranca_trabalho' ? 'seguranca_trabalho' : 'meio_ambiente';
+    const extraCols = {
+      disciplina: disciplineValue,
+      checklist_json: Array.isArray(order.checklist) ? order.checklist : null,
+      template_id: order.templateId || null,
+      nr_modules: Array.isArray(order.nrModules) ? order.nrModules : null,
+      schedule_id: isUuid(order.scheduleId) ? order.scheduleId : null
+    };
 
     let { data: inspecaoRow, error: inspecaoError } = await upsertInspecao({
       ...basePayload,
-      disciplina: disciplineValue,
+      ...extraCols,
       ...(clientName ? { cliente_nome: clientName } : {}),
       ...(clienteId ? { cliente_id: clienteId } : {}),
       ...(unidadeId ? { unidade_id: unidadeId } : {})
@@ -1317,7 +1373,11 @@ export const DataService = {
         inspecaoError.code === '42703' ||
         inspecaoError.message?.includes('cliente_') ||
         inspecaoError.message?.includes('unidade_id') ||
-        inspecaoError.message?.includes('disciplina'))
+        inspecaoError.message?.includes('disciplina') ||
+        inspecaoError.message?.includes('checklist_json') ||
+        inspecaoError.message?.includes('template_id') ||
+        inspecaoError.message?.includes('nr_modules') ||
+        inspecaoError.message?.includes('schedule_id'))
     ) {
       const retry = await upsertInspecao({
         ...basePayload,

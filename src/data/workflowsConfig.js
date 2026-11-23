@@ -6,18 +6,18 @@ export const WORK_DISCIPLINES = [
     label: 'Meio Ambiente',
     shortLabel: 'Meio Ambiente',
     available: true,
-    statusBadge: 'Disponível',
+    statusBadge: 'Ativo',
     description: 'Gestão ambiental, PGRSS, resíduos, efluentes, água, emissões e conformidades (EMSERH / RDC-50 / NR-32).',
-    checklistSummary: '11 temáticas • 63 itens avaliativos'
+    checklistSummary: '11 temáticas • 63 itens (ou modelo próprio)'
   },
   {
     id: 'seguranca_trabalho',
     label: 'Segurança do Trabalho',
     shortLabel: 'SST / Segurança',
-    available: false,
-    statusBadge: 'Em breve',
-    description: 'Inspeções de SST, NRs, EPIs/EPCs, máquinas, sinalização, ergonomia e combate a incêndio.',
-    checklistSummary: 'Módulo em implementação (próxima etapa)'
+    available: true,
+    statusBadge: 'Ativo',
+    description: 'Checklists modulares por NRs (NR-01 a NR-35), Matriz de Risco e controle de vencimentos SST.',
+    checklistSummary: 'NRs modulares + Matriz de Risco (P×S)'
   }
 ];
 

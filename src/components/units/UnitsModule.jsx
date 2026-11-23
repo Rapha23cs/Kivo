@@ -15,13 +15,16 @@ import {
   Check,
   Sparkles,
   ExternalLink,
-  Upload
+  Upload,
+  ShieldCheck
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { compressImageToDataUrl } from '../../supabase/dataService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
+import SstInventoryPanel from './SstInventoryPanel';
+import { getExpiryStatus } from '../../supabase/operationsService';
 
 const UNIT_TYPES = [
   'Hospital',
@@ -53,20 +56,33 @@ export default function UnitsModule({
   clients = [],
   orders = [],
   reports = [],
+  sstItems = [],
   onSaveUnit,
   onDeleteUnit,
   onSaveClient,
   onDeleteClient,
+  onSaveSstItem,
+  onDeleteSstItem,
   onImportUnitsFromOrders,
   onNewOrderForUnit,
   onOpenOrder,
   onNavigateTab
 }) {
   const { confirm, toast } = useFeedback();
+  const [activeSection, setActiveSection] = useState('units'); // units | sst_inventory
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [editingUnit, setEditingUnit] = useState(null);
   const [savingUnit, setSavingUnit] = useState(false);
+
+  const sstAlertCount = useMemo(
+    () =>
+      sstItems.filter((it) => {
+        const st = getExpiryStatus(it.dataValidade);
+        return st.status !== 'em_dia' && st.status !== 'indefinido';
+      }).length,
+    [sstItems]
+  );
 
   const [isClientsModalOpen, setIsClientsModalOpen] = useState(false);
   const [newClientForm, setNewClientForm] = useState({
@@ -232,7 +248,50 @@ export default function UnitsModule({
         </div>
       </div>
 
-      {/* Busca e Filtro */}
+      {/* Sub-abas: Unidades Atendidas vs Inventário SST */}
+      <div className="flex items-center gap-2 border-b border-[#232429] text-xs font-medium overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveSection('units')}
+          className={`px-3.5 py-2.5 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+            activeSection === 'units'
+              ? 'border-[#2EB88A] text-[#34D399] font-semibold'
+              : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          <span>Unidades Atendidas ({units.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('sst_inventory')}
+          className={`px-3.5 py-2.5 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+            activeSection === 'sst_inventory'
+              ? 'border-[#F59E0B] text-[#FBBF24] font-semibold'
+              : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Inventário SST &amp; Vencimentos ({sstItems.length})</span>
+          {sstAlertCount > 0 && (
+            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded-full bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/30">
+              {sstAlertCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeSection === 'sst_inventory' ? (
+        <SstInventoryPanel
+          items={sstItems}
+          units={units}
+          onSaveItem={onSaveSstItem}
+          onDeleteItem={onDeleteSstItem}
+        />
+      ) : (
+        <>
+          {/* Busca e Filtro */}
       <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-xs">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-2" />
@@ -404,6 +463,8 @@ export default function UnitsModule({
             );
           })}
         </div>
+      )}
+        </>
       )}
 
       {/* MODAL CRIAR / EDITAR UNIDADE */}

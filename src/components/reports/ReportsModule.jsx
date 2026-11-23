@@ -14,12 +14,14 @@ import {
   Link2,
   Globe,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  BarChart3
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import ReportEditorModal from './ReportEditorModal';
 import ReportPrintView from './ReportPrintView';
+import ConsolidatedClientReportModal from './ConsolidatedClientReportModal';
 import { calculateAdherenceLevel } from '../../data/reportTemplateData';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { getDisciplineMeta } from '../../data/workflowsConfig';
@@ -45,6 +47,7 @@ export default function ReportsModule({
   const [editingReport, setEditingReport] = useState(null);
   const [printingReport, setPrintingReport] = useState(null);
   const [showImportPicker, setShowImportPicker] = useState(false);
+  const [showConsolidatedModal, setShowConsolidatedModal] = useState(false);
 
   useEffect(() => {
     if (initialEditingReport) {
@@ -137,6 +140,15 @@ export default function ReportsModule({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowConsolidatedModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-[#141518] hover:bg-[#1C1D22] text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
+            title="Gerar relatório executivo consolidado comparando todas as unidades de um cliente"
+          >
+            <BarChart3 className="w-4 h-4 text-[#34D399]" />
+            Consolidado por Rede
+          </button>
           {onNavigateTab && (
             <button
               type="button"
@@ -475,6 +487,17 @@ export default function ReportsModule({
             )?.logoUrl || ''
           }
           onClose={() => setPrintingReport(null)}
+        />
+      )}
+
+      {showConsolidatedModal && (
+        <ConsolidatedClientReportModal
+          isOpen={showConsolidatedModal}
+          onClose={() => setShowConsolidatedModal(false)}
+          clients={clients}
+          orders={orders}
+          reports={reports}
+          userProfile={userProfile}
         />
       )}
     </div>

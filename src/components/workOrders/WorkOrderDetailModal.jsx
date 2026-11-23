@@ -64,6 +64,11 @@ import {
   calculateInspectionSummary,
   calculateTopicBreakdown
 } from '../../data/emserhChecklistData';
+import {
+  RISK_PROBABILITIES,
+  RISK_SEVERITIES,
+  calculateRiskMatrix
+} from '../../data/sstChecklistData';
 
 // Helper de ícone por temática oficial
 function TopicIcon({ topic, className = "w-4 h-4" }) {
@@ -368,7 +373,18 @@ export default function WorkOrderDetailModal({
   const handleChecklistFieldChange = (itemId, field, value) => {
     const updatedChecklist = (currentOrder.checklist || []).map(item => {
       if (item.id === itemId) {
-        return { ...item, [field]: value };
+        const nextItem = { ...item, [field]: value };
+        if (field === 'riskProbability' || field === 'riskSeverity') {
+          const risk = calculateRiskMatrix(
+            field === 'riskProbability' ? value : item.riskProbability || 3,
+            field === 'riskSeverity' ? value : item.riskSeverity || 3
+          );
+          nextItem.classification = risk.classification;
+          if (!item.deadline) {
+            nextItem.deadline = risk.suggestedDeadline;
+          }
+        }
+        return nextItem;
       }
       return item;
     });
@@ -781,7 +797,7 @@ export default function WorkOrderDetailModal({
                     </span>
                   </button>
 
-                  {EMSERH_TOPICS.map((topic, i) => {
+                  {Object.keys(topicBreakdown).map((topic, i) => {
                     const b = topicBreakdown[topic];
                     const isSelected = selectedTopic === topic;
                     const config = EMSERH_TOPICS_CONFIG[topic];
@@ -846,8 +862,10 @@ export default function WorkOrderDetailModal({
                         onChange={(e) => setSelectedTopic(e.target.value)}
                         className="w-full bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-1.5 text-xs text-[#F4F4F5] font-medium focus:border-[#2EB88A] focus:outline-none"
                       >
-                        <option value="ALL" className="bg-[#141518]">Todas as Temáticas (63 itens)</option>
-                        {EMSERH_TOPICS.map((topic, idx) => {
+                        <option value="ALL" className="bg-[#141518]">
+                          Todas as Temáticas ({checklistItems.length} itens)
+                        </option>
+                        {Object.keys(topicBreakdown).map((topic, idx) => {
                           const b = topicBreakdown[topic];
                           return (
                             <option key={idx} value={topic} className="bg-[#141518]">
@@ -1168,6 +1186,52 @@ export default function WorkOrderDetailModal({
                                   Ver critérios (Leve a Crítico)
                                 </span>
                               </div>
+
+                              {/* Matriz de Risco SST (Probabilidade x Severidade) quando fluxo SST */}
+                              {currentOrder.discipline === 'seguranca_trabalho' && (() => {
+                                const risk = calculateRiskMatrix(item.riskProbability || 3, item.riskSeverity || 3);
+                                return (
+                                  <div className="bg-[#141518] border border-[#232429] rounded-lg p-3 space-y-2.5 text-xs">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                      <span className="font-semibold text-[#E4E4E7]">
+                                        Matriz de Risco SST (Probabilidade × Severidade)
+                                      </span>
+                                      <span className={`font-mono text-[11px] font-bold px-2.5 py-0.5 rounded border ${risk.badgeClass}`}>
+                                        Grau {risk.score} • {risk.level} ({risk.classification})
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                      <div>
+                                        <label className="block text-[11px] text-[#A1A1AA] mb-1">Probabilidade</label>
+                                        <select
+                                          value={item.riskProbability || 3}
+                                          onChange={(e) => handleChecklistFieldChange(item.id, 'riskProbability', Number(e.target.value))}
+                                          className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F4F5] focus:outline-none focus:border-[#F59E0B]"
+                                        >
+                                          {RISK_PROBABILITIES.map((p) => (
+                                            <option key={p.value} value={p.value}>{p.label}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-[11px] text-[#A1A1AA] mb-1">Severidade</label>
+                                        <select
+                                          value={item.riskSeverity || 3}
+                                          onChange={(e) => handleChecklistFieldChange(item.id, 'riskSeverity', Number(e.target.value))}
+                                          className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F4F5] focus:outline-none focus:border-[#F59E0B]"
+                                        >
+                                          {RISK_SEVERITIES.map((s) => (
+                                            <option key={s.value} value={s.value}>{s.label}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </div>
+                                    <p className="text-[11px] text-[#71717A]">
+                                      {risk.description} Prazo sugerido: <strong className="text-[#E4E4E7]">{risk.suggestedDeadline}</strong>.
+                                    </p>
+                                  </div>
+                                );
+                              })()}
 
                               {/* Linha 1: Classificação, Responsável e Prazo com Sugestões Rápidas */}
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs">

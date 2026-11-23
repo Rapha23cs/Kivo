@@ -899,6 +899,7 @@ export function calculateInspectionSummary(checklist = []) {
   const totalNao = checklist.filter(i => i.status === 'nao' || i.status === 'nao_conforme').length;
   const totalNA = checklist.filter(i => i.status === 'na' || i.status === 'nao_aplicavel').length;
   const totalAvaliados = totalSim + totalNao;
+  const totalGeral = checklist.length;
   const percentualConformidade = totalAvaliados > 0 
     ? Math.round((totalSim / totalAvaliados) * 100) 
     : 0;
@@ -906,6 +907,7 @@ export function calculateInspectionSummary(checklist = []) {
   const desvios = checklist.filter(i => i.status === 'nao' || i.status === 'nao_conforme');
 
   return {
+    totalGeral,
     totalAvaliados,
     totalSim,
     totalNao,
@@ -918,8 +920,26 @@ export function calculateInspectionSummary(checklist = []) {
 
 export function calculateTopicBreakdown(checklist = []) {
   const breakdown = {};
-  EMSERH_TOPICS.forEach(topic => {
-    const items = checklist.filter(i => (i.topic || i.topicTitle) === topic);
+  const dynamicTopics = [];
+  const seen = new Set();
+
+  EMSERH_TOPICS.forEach((topic) => {
+    if (checklist.some((i) => (i.topic || i.topicTitle) === topic)) {
+      seen.add(topic);
+      dynamicTopics.push(topic);
+    }
+  });
+
+  checklist.forEach((i) => {
+    const t = i.topic || i.topicTitle || 'Geral';
+    if (!seen.has(t)) {
+      seen.add(t);
+      dynamicTopics.push(t);
+    }
+  });
+
+  dynamicTopics.forEach(topic => {
+    const items = checklist.filter(i => (i.topic || i.topicTitle || 'Geral') === topic);
     const sim = items.filter(i => i.status === 'sim' || i.status === 'conforme').length;
     const nao = items.filter(i => i.status === 'nao' || i.status === 'nao_conforme').length;
     const na = items.filter(i => i.status === 'na' || i.status === 'nao_aplicavel').length;

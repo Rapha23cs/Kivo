@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Calendar, Building2, User, ClipboardList, AlertCircle, Leaf, HardHat, Lock } from 'lucide-react';
+import { X, Plus, Calendar, Building2, User, ClipboardList, AlertCircle, Leaf, HardHat, Settings2 } from 'lucide-react';
 import { DataService } from '../../supabase/dataService';
 import { useFeedback } from '../common/FeedbackProvider';
 import { WORK_DISCIPLINES, getDisciplineMeta } from '../../data/workflowsConfig';
+import { SST_NR_MODULES, buildSstChecklist } from '../../data/sstChecklistData';
 
 export default function NewWorkOrderModal({
   isOpen,
@@ -11,6 +12,8 @@ export default function NewWorkOrderModal({
   onSaveUnit,
   clients = [],
   units = [],
+  templates = [],
+  onOpenTemplates = null,
   initialUnit = null,
   userProfile
 }) {
@@ -18,6 +21,8 @@ export default function NewWorkOrderModal({
 
   const { toast } = useFeedback();
   const [discipline, setDiscipline] = useState('meio_ambiente');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [selectedNrModules, setSelectedNrModules] = useState(['nr01', 'nr06', 'nr23']);
   const [selectedUnitId, setSelectedUnitId] = useState(initialUnit?.id || '');
   const [clientName, setClientName] = useState(
     initialUnit?.clienteNome || clients[0]?.nome || ''
@@ -30,6 +35,14 @@ export default function NewWorkOrderModal({
   const [saveUnitToCatalog, setSaveUnitToCatalog] = useState(true);
 
   const selectedDisciplineMeta = getDisciplineMeta(discipline);
+  const disciplineTemplates = templates.filter((t) => t.disciplina === discipline);
+  const chosenTemplate = disciplineTemplates.find((t) => t.id === selectedTemplateId) || null;
+
+  const toggleNrModule = (id) => {
+    setSelectedNrModules((prev) =>
+      prev.includes(id) ? (prev.length > 1 ? prev.filter((x) => x !== id) : prev) : [...prev, id]
+    );
+  };
 
   useEffect(() => {
     if (initialUnit) {
@@ -55,14 +68,6 @@ export default function NewWorkOrderModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedDisciplineMeta?.available) {
-      toast.info({
-        title: `${selectedDisciplineMeta.label} em implementação`,
-        message: 'Este fluxo será liberado na próxima etapa. Selecione Meio Ambiente para iniciar agora.'
-      });
-      return;
-    }
-
     if (!hospitalName.trim() || !regional.trim() || !municipio.trim()) {
       toast.warning({
         title: 'Campos obrigatórios',
@@ -93,11 +98,43 @@ export default function NewWorkOrderModal({
       }
     }
 
-    const baseItems = DataService.getBaseChecklistItems();
-    const items = baseItems.map((i) => ({ ...i, status: null }));
+    let items = [];
+    if (chosenTemplate) {
+      items = (chosenTemplate.itens || []).map((it, idx) => ({
+        id: it.id || `tpl-${chosenTemplate.id}-${idx + 1}`,
+        number: idx + 1,
+        topic: it.topic || 'Geral',
+        nrCode: it.nrCode || '',
+        question: it.question,
+        status: null,
+        classification: '',
+        riskProbability: 3,
+        riskSeverity: 3,
+        responsible: '',
+        deadline: '',
+        observation: '',
+        evidenceUrl: '',
+        afterPhotoUrl: '',
+        resolutionNote: '',
+        actionStatus: 'Em Aberto'
+      }));
+    } else if (discipline === 'seguranca_trabalho') {
+      items = buildSstChecklist(selectedNrModules);
+    } else {
+      const baseItems = DataService.getBaseChecklistItems();
+      items = baseItems.map((i) => ({
+        ...i,
+        status: null,
+        afterPhotoUrl: '',
+        resolutionNote: '',
+        actionStatus: 'Em Aberto'
+      }));
+    }
 
     const newOrderData = {
       discipline,
+      templateId: chosenTemplate?.id || '',
+      nrModules: !chosenTemplate && discipline === 'seguranca_trabalho' ? selectedNrModules : null,
       clientName: clientName.trim() || 'Cliente',
       unidadeId: resolvedUnitId,
       title: `Vistoria (${selectedDisciplineMeta.label}) — ${hospitalName.trim()}`,
@@ -129,7 +166,7 @@ export default function NewWorkOrderModal({
             </div>
             <div>
               <h3 className="font-semibold text-[#F4F4F5]">Iniciar Nova Vistoria</h3>
-              <p className="text-xs text-[#71717A]">Escolha o fluxo de trabalho e preencha os dados da unidade</p>
+              <p className="text-xs text-[#71717A]">Escolha o fluxo de trabalho, modelo de checklist e unidade</p>
             </div>
           </div>
           <button
@@ -156,12 +193,15 @@ export default function NewWorkOrderModal({
                   <button
                     key={flow.id}
                     type="button"
-                    onClick={() => setDiscipline(flow.id)}
+                    onClick={() => {
+                      setDiscipline(flow.id);
+                      setSelectedTemplateId('');
+                    }}
                     className={`text-left rounded-xl p-3 border transition space-y-1.5 ${
                       selected
-                        ? flow.available
+                        ? flow.id === 'meio_ambiente'
                           ? 'bg-[#122620] border-[#2EB88A] shadow-sm'
-                          : 'bg-[#221A10] border-[#F59E0B]/60'
+                          : 'bg-[#221A10] border-[#F59E0B]/70 shadow-sm'
                         : 'bg-[#141518] border-[#232429] hover:border-[#32343C]'
                     }`}
                   >
@@ -176,7 +216,7 @@ export default function NewWorkOrderModal({
                       </span>
                       <span
                         className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border ${
-                          flow.available
+                          flow.id === 'meio_ambiente'
                             ? 'bg-[#0D0E10] text-[#34D399] border-[#2EB88A]/30'
                             : 'bg-[#17140F] text-[#FBBF24] border-[#F59E0B]/30'
                         }`}
@@ -189,17 +229,85 @@ export default function NewWorkOrderModal({
                 );
               })}
             </div>
+          </div>
 
-            {!selectedDisciplineMeta?.available && (
-              <div className="bg-[#221A10] border border-[#F59E0B]/40 rounded-xl p-3.5 text-[#FBBF24] text-xs flex items-start gap-2.5">
-                <Lock className="w-4 h-4 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-semibold">
-                    Fluxo de Segurança do Trabalho em preparação
-                  </p>
-                  <p className="text-[11px] text-[#E4E4E7] leading-relaxed">
-                    O checklist técnico e os modelos de relatório de <strong>Segurança do Trabalho</strong> serão implementados na próxima etapa. Selecione <strong>Meio Ambiente</strong> acima para iniciar uma vistoria agora.
-                  </p>
+          {/* Seletor de Modelo (Padrão ou Personalizado) */}
+          <div className="bg-[#141518] border border-[#232429] rounded-xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="font-semibold text-[#F4F4F5]">
+                2. Modelo de Checklist
+              </label>
+              {onOpenTemplates && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenTemplates();
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] text-[#34D399] hover:underline font-medium"
+                >
+                  <Settings2 className="w-3 h-3" />
+                  Gerenciar Modelos
+                </button>
+              )}
+            </div>
+
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:outline-none focus:border-[#2EB88A]"
+            >
+              <option value="">
+                {discipline === 'seguranca_trabalho'
+                  ? 'Padrão SST — Seleção Modular por Normas (NRs)'
+                  : 'Padrão Meio Ambiente — 11 Temáticas (63 itens)'}
+              </option>
+              {disciplineTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  Personalizado: {tpl.nome} ({tpl.itens?.length || 0} itens)
+                </option>
+              ))}
+            </select>
+
+            {discipline === 'seguranca_trabalho' && !selectedTemplateId && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-[#A1A1AA]">Selecione as NRs aplicáveis à unidade:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNrModules(SST_NR_MODULES.map((m) => m.id))}
+                    className="text-[#34D399] hover:underline"
+                  >
+                    Marcar todas ({SST_NR_MODULES.length})
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {SST_NR_MODULES.map((mod) => {
+                    const checked = selectedNrModules.includes(mod.id);
+                    return (
+                      <label
+                        key={mod.id}
+                        className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer transition text-[11px] ${
+                          checked
+                            ? 'bg-[#221A10] border-[#F59E0B]/40 text-[#F4F4F5]'
+                            : 'bg-[#0D0E10] border-[#232429] text-[#A1A1AA]'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleNrModule(mod.id)}
+                            className="accent-[#F59E0B]"
+                          />
+                          <span className="truncate font-medium">{mod.shortName}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-[#71717A] shrink-0">
+                          {mod.items.length}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -350,7 +458,7 @@ export default function NewWorkOrderModal({
           <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 text-[#71717A] text-[11px] flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-[#34D399] shrink-0 mt-0.5" />
             <span>
-              Os 63 itens distribuídos nas 11 temáticas serão carregados automaticamente para preenchimento online ou offline.
+              Os itens selecionados para <strong className="text-[#E4E4E7]">{selectedDisciplineMeta.label}</strong> serão carregados automaticamente para preenchimento online ou offline.
             </span>
           </div>
 
@@ -365,20 +473,10 @@ export default function NewWorkOrderModal({
             </button>
             <button
               type="submit"
-              disabled={!selectedDisciplineMeta?.available}
-              className="px-5 py-2 text-xs font-semibold bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-45 disabled:cursor-not-allowed text-[#09090B] rounded-lg transition flex items-center gap-1.5"
+              className="px-5 py-2 text-xs font-semibold bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg transition flex items-center gap-1.5"
             >
-              {selectedDisciplineMeta?.available ? (
-                <>
-                  <Plus className="w-4 h-4" />
-                  Criar Vistoria ({selectedDisciplineMeta.label})
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5" />
-                  Em implementação
-                </>
-              )}
+              <Plus className="w-4 h-4" />
+              Criar Vistoria ({selectedDisciplineMeta.label})
             </button>
           </div>
         </form>
