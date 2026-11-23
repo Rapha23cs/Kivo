@@ -12,13 +12,16 @@ import {
   Building2,
   Calendar,
   Link2,
-  Globe
+  Globe,
+  AlertTriangle,
+  ArrowRight
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import ReportEditorModal from './ReportEditorModal';
 import ReportPrintView from './ReportPrintView';
-import { createBlankReport, calculateAdherenceLevel } from '../../data/reportTemplateData';
+import { calculateAdherenceLevel } from '../../data/reportTemplateData';
+import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { ReportService } from '../../supabase/reportService';
 
 export default function ReportsModule({
@@ -33,7 +36,8 @@ export default function ReportsModule({
   onDeleteReport,
   initialEditingReport,
   onClearInitialEditingReport,
-  onOpenOrderByCode
+  onOpenOrderByCode,
+  onNavigateTab
 }) {
   const { confirm, toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
@@ -84,13 +88,31 @@ export default function ReportsModule({
       : '0.0';
   const totalDesvios = (reports || []).reduce((acc, r) => acc + (r.desvios?.length || 0), 0);
 
-  const handleNewBlank = () => {
-    const blank = createBlankReport({ userProfile, hospitals });
-    setEditingReport(blank);
+  const handleOpenCreateFlow = () => {
+    if (!orders || orders.length === 0) {
+      toast.info({
+        title: 'Nenhuma vistoria iniciada',
+        message: 'Crie uma vistoria e preencha o checklist primeiro para depois gerar ou continuar o relatório.'
+      });
+      onNavigateTab?.('orders');
+      return;
+    }
+    setShowImportPicker((prev) => !prev);
   };
 
   const handleCreateFromOrder = (order) => {
+    const summary = calculateInspectionSummary(order.checklist || []);
     const existing = findExistingReportForOrder(order);
+
+    if (!existing && summary.totalAvaliados === 0) {
+      toast.info({
+        title: 'Checklist ainda não preenchido',
+        message: `Avalie pelo menos um item do checklist em ${order.id} antes de gerar o relatório.`
+      });
+      onOpenOrderByCode?.(order.id);
+      return;
+    }
+
     const built = existing
       ? ReportService.syncFromOrder(existing, order, userProfile)
       : ReportService.buildFromOrder(order, userProfile);
@@ -109,48 +131,48 @@ export default function ReportsModule({
             Relatórios Técnicos de Inspeção Ambiental
           </h2>
           <p className="text-xs text-[#71717A] mt-0.5">
-            Capa, Resultados Consolidados (8 métricas), Tabela de Desvios, 56 Registros Fotográficos, Aderência e Conclusão
+            Todo relatório é gerado e atualizado a partir de uma Vistoria com Checklist preenchido
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          {orders?.length > 0 && (
+          {onNavigateTab && (
             <button
               type="button"
-              onClick={() => setShowImportPicker(!showImportPicker)}
+              onClick={() => onNavigateTab('orders')}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-[#141518] hover:bg-[#1C1D22] text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
             >
-              <ClipboardCheck className="w-4 h-4 text-[#34D399]" />
-              Gerar de um Checklist
+              <ClipboardCheck className="w-4 h-4 text-[#A1A1AA]" />
+              Ir para Vistorias
             </button>
           )}
           <button
             type="button"
-            onClick={handleNewBlank}
+            onClick={handleOpenCreateFlow}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
           >
             <Plus className="w-4 h-4" />
-            Novo Relatório
+            Vincular Vistoria / Novo Relatório
           </button>
         </div>
       </div>
 
-      {/* Seletor rápido para importar de um Checklist existente */}
+      {/* Seletor rápido para vincular uma Vistoria/Checklist existente */}
       {showImportPicker && (
         <div className="bg-[#141518] border border-[#2EB88A]/40 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div>
               <h3 className="text-xs font-semibold text-[#F4F4F5]">
-                Selecione uma Inspeção/Checklist para preencher automaticamente o Relatório
+                Selecione uma Vistoria com Checklist iniciado para gerar ou continuar o Relatório
               </h3>
               <p className="text-[11px] text-[#71717A]">
-                O Kivo calcula Itens Avaliados, Conformidades, Índice %, Desvios e Conclusão automaticamente.
+                Vistorias sem nenhum item respondido no checklist precisam ser preenchidas antes de liberar o relatório.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setShowImportPicker(false)}
-              className="text-xs text-[#71717A] hover:text-[#F4F4F5]"
+              className="text-xs text-[#71717A] hover:text-[#F4F4F5] shrink-0"
             >
               Fechar
             </button>
@@ -158,25 +180,45 @@ export default function ReportsModule({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {orders.map((ord) => {
               const existingRep = findExistingReportForOrder(ord);
+              const summary = calculateInspectionSummary(ord.checklist || []);
+              const isChecklistReady = summary.totalAvaliados > 0 || Boolean(existingRep);
+
               return (
                 <button
                   key={ord.id}
                   type="button"
                   onClick={() => handleCreateFromOrder(ord)}
-                  className="text-left bg-[#0D0E10] hover:bg-[#1A1B20] border border-[#232429] hover:border-[#2EB88A]/50 rounded-lg p-3 transition space-y-1"
+                  className={`text-left border rounded-lg p-3 transition space-y-1.5 ${
+                    isChecklistReady
+                      ? 'bg-[#0D0E10] hover:bg-[#1A1B20] border-[#232429] hover:border-[#2EB88A]/50'
+                      : 'bg-[#0D0E10]/70 hover:bg-[#16171B] border-dashed border-[#27282E]'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[10px] text-[#34D399]">{ord.id}</span>
                     {existingRep ? (
                       <span className="text-[10px] text-[#34D399] bg-[#122620] px-1.5 py-0.5 rounded border border-[#2EB88A]/30">
-                        Sincronizar existente
+                        Continuar ({existingRep.codigoRelatorio})
+                      </span>
+                    ) : isChecklistReady ? (
+                      <span className="text-[10px] text-[#34D399] bg-[#122620] px-1.5 py-0.5 rounded border border-[#2EB88A]/30">
+                        Pronto • {summary.totalAvaliados}/{summary.totalGeral} itens
                       </span>
                     ) : (
-                      <span className="text-[10px] text-[#71717A]">{ord.scheduledDate}</span>
+                      <span className="text-[10px] text-[#FBBF24] bg-[#221A10] px-1.5 py-0.5 rounded border border-[#F59E0B]/30">
+                        Preencher checklist
+                      </span>
                     )}
                   </div>
                   <p className="text-xs font-medium text-[#F4F4F5] truncate">{ord.hospitalName}</p>
-                  <p className="text-[11px] text-[#71717A] truncate">{ord.clientName || 'Cliente'} • {ord.municipio}</p>
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-[#71717A]">
+                    <span className="truncate">{ord.clientName || 'Cliente'} • {ord.municipio}</span>
+                    {isChecklistReady && (
+                      <span className="font-mono text-[#34D399] shrink-0">
+                        {summary.percentualConformidade}%
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}
@@ -220,18 +262,30 @@ export default function ReportsModule({
       {filteredReports.length === 0 ? (
         <div className="bg-[#141518] border border-[#232429] rounded-xl p-12 text-center space-y-3">
           <FileBarChart2 className="w-10 h-10 text-[#71717A] mx-auto" />
-          <h3 className="text-sm font-semibold text-[#F4F4F5]">Nenhum relatório criado ainda</h3>
+          <h3 className="text-sm font-semibold text-[#F4F4F5]">Nenhum relatório vinculado ainda</h3>
           <p className="text-xs text-[#71717A] max-w-md mx-auto">
-            Crie um relatório em branco ou gere automaticamente a partir de um checklist existente com todas as seções fotográficas e cálculo de aderência.
+            Primeiro inicie uma vistoria e responda ao checklist de campo. Depois vincule essa vistoria para gerar e finalizar o relatório técnico completo.
           </p>
-          <div className="flex items-center justify-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleNewBlank}
-              className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
-            >
-              + Novo Relatório
-            </button>
+          <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+            {orders?.length > 0 ? (
+              <button
+                type="button"
+                onClick={handleOpenCreateFlow}
+                className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                Selecionar Vistoria com Checklist
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onNavigateTab?.('orders')}
+                className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
+              >
+                <span>Ir para Vistorias &amp; Checklists</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -265,7 +319,7 @@ export default function ReportsModule({
                           Público
                         </span>
                       )}
-                      {linkedCode && (
+                      {linkedCode ? (
                         <button
                           type="button"
                           onClick={() => onOpenOrderByCode?.(linkedOrder?.id || linkedCode)}
@@ -275,6 +329,14 @@ export default function ReportsModule({
                           <Link2 className="w-2.5 h-2.5" />
                           {linkedCode}
                         </button>
+                      ) : (
+                        <span
+                          title="Relatório legado sem vistoria vinculada — abra para vincular"
+                          className="inline-flex items-center gap-1 font-mono text-[10px] text-[#FBBF24] bg-[#221A10] px-2 py-0.5 rounded border border-[#F59E0B]/30"
+                        >
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          Sem vistoria
+                        </span>
                       )}
                     </div>
                     <span className="text-[11px] font-mono text-[#71717A] flex items-center gap-1">
@@ -375,6 +437,7 @@ export default function ReportsModule({
           report={editingReport}
           isOpen={Boolean(editingReport)}
           linkedOrder={findLinkedOrder(editingReport)}
+          orders={orders}
           units={units}
           userProfile={userProfile}
           clientLogoUrl={

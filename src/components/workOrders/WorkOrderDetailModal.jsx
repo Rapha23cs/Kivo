@@ -1536,12 +1536,22 @@ export default function WorkOrderDetailModal({
               {onOpenTechnicalReport && (
                 <button
                   type="button"
-                  onClick={() => onOpenTechnicalReport(currentOrder)}
+                  onClick={() => {
+                    if (!linkedReport && summary.totalAvaliados === 0) {
+                      setActiveTab('checklist');
+                      toast.info({
+                        title: 'Preencha o checklist primeiro',
+                        message: 'Avalie pelo menos um item do checklist desta vistoria antes de gerar o relatório técnico.'
+                      });
+                      return;
+                    }
+                    onOpenTechnicalReport(currentOrder);
+                  }}
                   className="px-3.5 py-1.5 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
                 >
                   <FileBarChart2 className="w-3.5 h-3.5" />
                   <span>
-                    {linkedReport ? `Abrir Relatório (${linkedReport.codigoRelatorio})` : 'Gerar Relatório Técnico'}
+                    {linkedReport ? `Continuar Relatório (${linkedReport.codigoRelatorio})` : 'Gerar Relatório Técnico'}
                   </span>
                 </button>
               )}

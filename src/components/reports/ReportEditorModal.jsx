@@ -57,6 +57,7 @@ export default function ReportEditorModal({
   onSaveReport,
   onLocalDraftUpdate,
   linkedOrder,
+  orders = [],
   units = [],
   userProfile,
   clientLogoUrl = ''
@@ -91,6 +92,7 @@ export default function ReportEditorModal({
   const [autoSaveState, setAutoSaveState] = useState('idle'); // idle | saving | saved
   const [showPrintView, setShowPrintView] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
+  const [selectedLinkOrderId, setSelectedLinkOrderId] = useState('');
   const [stampPhotos, setStampPhotos] = useState(true);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
 
@@ -180,6 +182,31 @@ export default function ReportEditorModal({
     const synced = ReportService.syncFromOrder(draft, linkedOrder, userProfile);
     applyDraftUpdate(synced, { immediate: true });
     setSyncNotice(`Métricas, desvios e evidências sincronizados com o checklist ${linkedOrder.id}.`);
+  };
+
+  const eligibleOrdersToLink = (orders || []).filter((ord) =>
+    (ord.checklist || []).some((i) => i.status === 'sim' || i.status === 'nao' || i.status === 'nao_conforme' || i.status === 'na')
+  );
+
+  const handleLinkInspection = () => {
+    const targetOrder = eligibleOrdersToLink.find((o) => o.id === selectedLinkOrderId);
+    if (!targetOrder) {
+      toast.info({ message: 'Selecione uma vistoria com checklist preenchido para vincular.' });
+      return;
+    }
+    const baseLinked = {
+      ...draft,
+      inspecaoId: targetOrder.supabaseId || null,
+      inspecaoCodigo: targetOrder.id,
+      unidadeId: draft.unidadeId || targetOrder.unidadeId || null,
+      clienteNome: draft.clienteNome || targetOrder.clientName || '',
+      unidade: draft.unidade || targetOrder.hospitalName || '',
+      cidade: draft.cidade || targetOrder.municipio || '',
+      regional: draft.regional || targetOrder.regional || ''
+    };
+    const synced = ReportService.syncFromOrder(baseLinked, targetOrder, userProfile);
+    applyDraftUpdate(synced, { immediate: true });
+    setSyncNotice(`Relatório vinculado à vistoria ${targetOrder.id} com dados do checklist importados.`);
   };
 
   const updateField = (field, value) => {
@@ -325,6 +352,13 @@ export default function ReportEditorModal({
   const handleSave = async (targetStatus) => {
     if (targetStatus === 'finalizado') {
       const current = latestDraftRef.current;
+      if (!current.inspecaoId && !current.inspecaoCodigo) {
+        toast.error({
+          title: 'Vistoria obrigatória',
+          message: 'Vincule uma vistoria com checklist preenchido no topo deste relatório antes de finalizar.'
+        });
+        return;
+      }
       const missing = [];
       if (!current.unidade?.trim()) missing.push('Unidade');
       if (!current.responsavel?.trim()) missing.push('Responsável');
@@ -644,6 +678,42 @@ export default function ReportEditorModal({
               >
                 Dispensar
               </button>
+            </div>
+          )}
+
+          {/* VÍNCULO OBRIGATÓRIO COM VISTORIA (Para relatórios legados sem inspeção) */}
+          {!linkedOrder && !draft.inspecaoId && !draft.inspecaoCodigo && (
+            <div className="px-4 sm:px-5 py-2.5 bg-[#221A10] border-b border-[#F59E0B]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#FBBF24] shrink-0">
+              <span>
+                Este relatório ainda não está vinculado a uma vistoria. Selecione uma inspeção com checklist preenchido para continuar:
+              </span>
+              {eligibleOrdersToLink.length > 0 ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <select
+                    value={selectedLinkOrderId}
+                    onChange={(e) => setSelectedLinkOrderId(e.target.value)}
+                    className="bg-[#0D0E10] border border-[#332614] rounded-lg px-2.5 py-1 text-xs text-[#F4F4F5] focus:outline-none focus:border-[#2EB88A] max-w-[230px]"
+                  >
+                    <option value="">Selecionar vistoria...</option>
+                    {eligibleOrdersToLink.map((ord) => (
+                      <option key={ord.id} value={ord.id}>
+                        {ord.id} — {ord.hospitalName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleLinkInspection}
+                    className="px-3 py-1 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-semibold rounded-lg text-xs transition"
+                  >
+                    Vincular
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] font-medium text-[#E4E4E7]">
+                  Nenhuma vistoria com checklist respondido encontrada ainda.
+                </span>
+              )}
             </div>
           )}
 

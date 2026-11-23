@@ -719,6 +719,7 @@ export default function App() {
                   const found = orders.find((o) => o.id === codeOrId || o.supabaseId === codeOrId);
                   if (found) setSelectedOrder(found);
                 }}
+                onNavigateTab={setActiveTab}
                 onSaveReport={async (rep) => {
                   const next = await ReportService.saveReport(rep);
                   setReports(next);
