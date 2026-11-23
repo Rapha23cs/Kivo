@@ -70,6 +70,47 @@ export default function DashboardOverview({
   const conformityPercentage = totalAvaliados > 0 ? Math.round((totalSim / totalAvaliados) * 100) : 0;
   const finalizedReports = reports.filter((r) => r.status === 'finalizado').length;
 
+  // Série temporal de conformidade das últimas vistorias + distribuição por severidade
+  const timelineSeries = React.useMemo(() => {
+    return [...orders]
+      .filter((o) => (o.checklist || []).some((i) => i.status !== null && i.status !== undefined))
+      .sort((a, b) => new Date(a.scheduledDate || a.createdAt || 0) - new Date(b.scheduledDate || b.createdAt || 0))
+      .slice(-8)
+      .map((o) => {
+        const s = calculateInspectionSummary(o.checklist || []);
+        const rawDate = o.scheduledDate || o.createdAt || '';
+        const label = rawDate
+          ? new Date(rawDate.length === 10 ? `${rawDate}T12:00:00` : rawDate).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit'
+            })
+          : o.id.slice(-4);
+        return {
+          id: o.id,
+          unit: o.hospitalName || o.id,
+          label,
+          percent: Number(s.percentualConformidade) || 0
+        };
+      });
+  }, [orders]);
+
+  const severityDistribution = React.useMemo(() => {
+    const counts = { Crítico: 0, Grave: 0, Médio: 0, Leve: 0, Outros: 0 };
+    orders.forEach((o) => {
+      (o.checklist || []).forEach((item) => {
+        if (item.status === 'nao' || item.status === 'nao_conforme') {
+          if (Object.prototype.hasOwnProperty.call(counts, item.classification)) {
+            counts[item.classification] += 1;
+          } else {
+            counts.Outros += 1;
+          }
+        }
+      });
+    });
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return { counts, total };
+  }, [orders]);
+
   // Agregação por Temática (11 áreas) e lista de desvios prioritários (Crítico / Grave)
   const topicRanking = React.useMemo(() => {
     const acc = {};
@@ -265,16 +306,47 @@ export default function DashboardOverview({
           <p className="text-[11px] text-[#A1A1AA]">Tratativa registrada na Regra 6</p>
         </div>
 
-        <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider">Média de Conformidade</span>
-            <Activity className="w-4 h-4 text-[#2EB88A]" />
+        <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 flex items-center justify-between gap-3">
+          <div className="space-y-1.5 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-[#2EB88A]" />
+              <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider truncate">
+                Média Conformidade
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-[#34D399] font-mono">{conformityPercentage}%</span>
+              <span className="text-xs text-[#71717A] font-medium">({totalAvaliados})</span>
+            </div>
+            <p className="text-[11px] text-[#A1A1AA]">Apuração automática nos checklists</p>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-[#34D399] font-mono">{conformityPercentage}%</span>
-            <span className="text-xs text-[#71717A] font-medium">({totalAvaliados} itens)</span>
+
+          {/* Medidor Circular SVG (Gauge) */}
+          <div className="relative w-14 h-14 shrink-0 flex items-center justify-center">
+            <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+              <circle
+                cx="18"
+                cy="18"
+                r="15.5"
+                fill="none"
+                stroke="#232429"
+                strokeWidth="3.2"
+              />
+              <circle
+                cx="18"
+                cy="18"
+                r="15.5"
+                fill="none"
+                stroke={conformityPercentage >= 80 ? '#2EB88A' : conformityPercentage >= 60 ? '#F59E0B' : '#F43F5E'}
+                strokeWidth="3.2"
+                strokeLinecap="round"
+                strokeDasharray={`${Math.min(100, Math.max(0, conformityPercentage)) * 0.974} 100`}
+              />
+            </svg>
+            <span className="absolute font-mono text-[10px] font-bold text-[#F4F4F5]">
+              {conformityPercentage}%
+            </span>
           </div>
-          <p className="text-[11px] text-[#A1A1AA]">Apuração automática nos checklists</p>
         </div>
 
         <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-2">
@@ -289,6 +361,191 @@ export default function DashboardOverview({
           <p className="text-[11px] text-[#A1A1AA]">Com registros fotográficos e aderência</p>
         </div>
       </div>
+
+      {/* Gráficos Analíticos Leves (Evolução Temporal + Severidade dos Desvios) */}
+      {(timelineSeries.length >= 2 || severityDistribution.total > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Evolução Temporal de Conformidade */}
+          <div className="lg:col-span-7 bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-[#34D399]" />
+                <h3 className="font-semibold text-[#F4F4F5] text-sm">Evolução da Conformidade</h3>
+              </div>
+              <span className="text-[11px] text-[#71717A] font-mono">
+                Últimas {timelineSeries.length} vistoria(s)
+              </span>
+            </div>
+
+            {timelineSeries.length < 2 ? (
+              <p className="text-xs text-[#71717A] py-8 text-center">
+                Conclua ao menos 2 vistorias avaliadas para visualizar a curva de evolução temporal.
+              </p>
+            ) : (
+              (() => {
+                const W = 520;
+                const H = 140;
+                const padX = 28;
+                const padY = 18;
+                const innerW = W - padX * 2;
+                const innerH = H - padY * 2;
+                const coords = timelineSeries.map((pt, i) => {
+                  const x = padX + (timelineSeries.length === 1 ? innerW / 2 : (i / (timelineSeries.length - 1)) * innerW);
+                  const y = padY + innerH - (pt.percent / 100) * innerH;
+                  return { ...pt, x, y };
+                });
+                const linePoints = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+                const areaPath = `M ${coords[0].x.toFixed(1)},${(H - padY).toFixed(1)} L ${coords
+                  .map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`)
+                  .join(' L ')} L ${coords[coords.length - 1].x.toFixed(1)},${(H - padY).toFixed(1)} Z`;
+
+                return (
+                  <div className="space-y-2">
+                    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-36 overflow-visible">
+                      <defs>
+                        <linearGradient id="kivoConformityGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#2EB88A" stopOpacity="0.35" />
+                          <stop offset="100%" stopColor="#2EB88A" stopOpacity="0.02" />
+                        </linearGradient>
+                      </defs>
+
+                      {[0, 50, 80, 100].map((tick) => {
+                        const y = padY + innerH - (tick / 100) * innerH;
+                        return (
+                          <g key={tick}>
+                            <line
+                              x1={padX}
+                              y1={y}
+                              x2={W - padX}
+                              y2={y}
+                              stroke={tick === 80 ? '#2EB88A' : '#232429'}
+                              strokeOpacity={tick === 80 ? 0.35 : 0.9}
+                              strokeDasharray={tick === 80 ? '4 4' : undefined}
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={4}
+                              y={y + 3}
+                              fill="#71717A"
+                              fontSize="9"
+                              fontFamily="monospace"
+                            >
+                              {tick}%
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      <path d={areaPath} fill="url(#kivoConformityGrad)" />
+                      <polyline
+                        fill="none"
+                        stroke="#2EB88A"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={linePoints}
+                      />
+
+                      {coords.map((c) => (
+                        <g key={c.id}>
+                          <circle cx={c.x} cy={c.y} r="4.5" fill="#141518" stroke="#34D399" strokeWidth="2.2" />
+                          <text
+                            x={c.x}
+                            y={Math.max(10, c.y - 9)}
+                            textAnchor="middle"
+                            fill="#F4F4F5"
+                            fontSize="9.5"
+                            fontWeight="700"
+                            fontFamily="monospace"
+                          >
+                            {c.percent}%
+                          </text>
+                          <text
+                            x={c.x}
+                            y={H - 2}
+                            textAnchor="middle"
+                            fill="#71717A"
+                            fontSize="9"
+                            fontFamily="monospace"
+                          >
+                            {c.label}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+
+          {/* Distribuição de Desvios por Severidade */}
+          <div className="lg:col-span-5 bg-[#141518] border border-[#232429] rounded-xl p-5 flex flex-col justify-between space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertOctagon className="w-4 h-4 text-[#FB7185]" />
+                <h3 className="font-semibold text-[#F4F4F5] text-sm">Severidade dos Desvios</h3>
+              </div>
+              <span className="font-mono text-xs font-bold text-[#FB7185]">
+                {severityDistribution.total} registro(s)
+              </span>
+            </div>
+
+            {severityDistribution.total === 0 ? (
+              <p className="text-xs text-[#71717A] py-8 text-center">
+                Nenhum item classificado como "Não" até o momento.
+              </p>
+            ) : (
+              <div className="space-y-4 my-auto">
+                <div className="w-full h-4 rounded-full overflow-hidden bg-[#0D0E10] border border-[#232429] flex">
+                  {[
+                    { key: 'Crítico', color: '#E11D48' },
+                    { key: 'Grave', color: '#F59E0B' },
+                    { key: 'Médio', color: '#6366F1' },
+                    { key: 'Leve', color: '#2EB88A' },
+                    { key: 'Outros', color: '#71717A' }
+                  ].map(({ key, color }) => {
+                    const qty = severityDistribution.counts[key] || 0;
+                    if (qty <= 0) return null;
+                    const pct = (qty / severityDistribution.total) * 100;
+                    return (
+                      <div
+                        key={key}
+                        style={{ width: `${pct}%`, backgroundColor: color }}
+                        title={`${key}: ${qty} (${Math.round(pct)}%)`}
+                        className="h-full transition-all duration-500"
+                      />
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5 text-xs">
+                  {[
+                    { key: 'Crítico', dot: 'bg-[#E11D48]' },
+                    { key: 'Grave', dot: 'bg-[#F59E0B]' },
+                    { key: 'Médio', dot: 'bg-[#6366F1]' },
+                    { key: 'Leve', dot: 'bg-[#2EB88A]' }
+                  ].map(({ key, dot }) => {
+                    const qty = severityDistribution.counts[key] || 0;
+                    const pct = severityDistribution.total > 0 ? Math.round((qty / severityDistribution.total) * 100) : 0;
+                    return (
+                      <div key={key} className="bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-2 flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-[#E4E4E7]">
+                          <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
+                          {key}
+                        </span>
+                        <span className="font-mono font-bold text-[#F4F4F5]">
+                          {qty} <span className="text-[10px] text-[#71717A] font-normal">({pct}%)</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Listas Recentes Reais */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

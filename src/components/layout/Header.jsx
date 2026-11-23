@@ -1,5 +1,6 @@
 import React from 'react';
-import { Building2, Plus, Menu, WifiOff, RefreshCw, Cloud, Search } from 'lucide-react';
+import { Building2, Plus, Menu, WifiOff, RefreshCw, Cloud, Search, Sun, Moon } from 'lucide-react';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function Header({
   clientNames = [],
@@ -13,7 +14,9 @@ export default function Header({
   isOnline = true,
   pendingSyncCount = 0,
   isSyncing = false,
-  onSyncNow
+  onSyncNow,
+  theme = 'dark',
+  onToggleTheme
 }) {
   return (
     <header className="no-print h-14 sm:h-16 border-b border-[#1F2024] bg-[#0D0E10]/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-30 shrink-0">
@@ -106,6 +109,22 @@ export default function Header({
           </span>
         )}
 
+        {onToggleTheme && (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className="p-2 bg-[#141518] hover:bg-[#1C1D22] border border-[#232429] rounded-lg text-[#A1A1AA] hover:text-[#F4F4F5] transition shrink-0"
+            title={theme === 'light' ? 'Mudar para modo escuro' : 'Mudar para modo claro (Campo / Dia)'}
+            aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+          >
+            {theme === 'light' ? (
+              <Moon className="w-4 h-4 text-[#34D399]" />
+            ) : (
+              <Sun className="w-4 h-4 text-[#FBBF24]" />
+            )}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onOpenNewOrder}
@@ -122,9 +141,17 @@ export default function Header({
           className="flex items-center gap-2 pl-2 border-l border-[#1F2024] cursor-pointer hover:opacity-90 transition group"
           title="Editar perfil do responsável técnico"
         >
-          <div className="w-8 h-8 rounded-full bg-[#1C1D22] border border-[#2D2F36] text-[#F4F4F5] font-bold flex items-center justify-center text-xs shrink-0">
-            {userProfile?.name?.charAt(0) || 'A'}
-          </div>
+          {userProfile?.avatarUrl ? (
+            <img
+              src={sanitizeMediaUrl(userProfile.avatarUrl)}
+              alt={userProfile?.name || 'Auditor Técnico'}
+              className="w-8 h-8 rounded-full object-cover border border-[#2EB88A]/50 shrink-0"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-[#1C1D22] border border-[#2D2F36] text-[#F4F4F5] font-bold flex items-center justify-center text-xs shrink-0">
+              {userProfile?.name?.charAt(0) || 'A'}
+            </div>
+          )}
           <div className="hidden lg:block text-left text-xs">
             <span className="font-semibold text-[#F4F4F5] group-hover:text-white transition block leading-tight">
               {userProfile?.name || 'Auditor Técnico'}

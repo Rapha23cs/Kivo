@@ -3,7 +3,7 @@ import { X, Printer, FileText } from 'lucide-react';
 import { calculateInspectionSummary, calculateTopicBreakdown, EMSERH_TOPICS } from '../../data/emserhChecklistData';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
-export default function TechnicalReportView({ order, onClose }) {
+export default function TechnicalReportView({ order, userProfile, onClose }) {
   if (!order) return null;
 
   const handlePrint = () => {
@@ -50,10 +50,8 @@ export default function TechnicalReportView({ order, onClose }) {
           {/* Header Institucional Kivo / Cliente */}
           <div className="border-b-2 border-emerald-700 pb-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded bg-slate-900 text-white flex items-center justify-center font-black text-xl">
-                  K
-                </div>
+              <div className="flex items-center gap-3">
+                <img src="/icon.svg" alt="Logo Kivo" className="w-10 h-10 rounded-xl shrink-0" />
                 <div>
                   <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 font-sans leading-none">
                     KIVO
@@ -237,6 +235,37 @@ export default function TechnicalReportView({ order, onClose }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Bloco Formal de Assinaturas */}
+          <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-8 break-inside-avoid text-center text-xs">
+            <div className="space-y-1">
+              <div className="h-14 flex items-end justify-center">
+                {userProfile?.signatureUrl && (
+                  <img
+                    src={sanitizeMediaUrl(userProfile.signatureUrl)}
+                    alt="Assinatura do Responsável Técnico"
+                    className="max-h-12 max-w-[180px] object-contain"
+                  />
+                )}
+              </div>
+              <div className="border-t border-slate-400 pt-2">
+                <p className="font-bold text-slate-900">
+                  {order.technicianName || userProfile?.name || 'Auditor Técnico'}
+                </p>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  {userProfile?.registry || 'Responsável Técnico (RT)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="h-14" />
+              <div className="border-t border-slate-400 pt-2">
+                <p className="font-bold text-slate-900">Gestor / Responsável da Unidade</p>
+                <p className="text-[11px] text-slate-500">{order.hospitalName || 'Unidade Auditada'}</p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 text-center text-[10px] text-slate-400 font-mono">

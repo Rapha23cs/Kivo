@@ -309,7 +309,9 @@ export const DataService = {
       title: meta.title || DEFAULT_USER_PROFILE.title,
       specialty: meta.specialty || DEFAULT_USER_PROFILE.specialty,
       consultancyName: meta.consultancy_name || '',
-      phone: meta.phone || ''
+      phone: meta.phone || '',
+      avatarUrl: meta.avatar_url || '',
+      signatureUrl: meta.signature_url || ''
     };
 
     persistProfileCache(syncedProfile);
@@ -338,7 +340,9 @@ export const DataService = {
               title: profile.title,
               specialty: profile.specialty,
               consultancy_name: profile.consultancyName,
-              phone: profile.phone
+              phone: profile.phone,
+              avatar_url: profile.avatarUrl || '',
+              signature_url: profile.signatureUrl || ''
             }
           });
           if (error) {
@@ -378,6 +382,7 @@ export const DataService = {
       nome,
       codigo: (clientData.codigo || '').trim(),
       segmento: (clientData.segmento || 'Hospitalar / Saúde').trim(),
+      logoUrl: clientData.logoUrl || '',
       ativo: true,
       updatedAt: new Date().toISOString()
     };
@@ -395,7 +400,9 @@ export const DataService = {
         const synced = await this.syncClientToSupabase(persistedRecord);
         if (synced?.id) {
           const reconciled = this.getClients().map((c) =>
-            c.nome === synced.nome ? { ...c, ...synced } : c
+            c.nome === synced.nome
+              ? { ...c, ...synced, logoUrl: synced.logo_url ?? c.logoUrl ?? '' }
+              : c
           );
           persistClientsCache(reconciled);
           await OfflineStore.dequeueClientUpsert(persistedRecord.nome);
@@ -436,20 +443,35 @@ export const DataService = {
     const user = userData?.user;
     if (!user) return null;
 
-    const { data, error } = await client
+    const basePayload = {
+      user_id: user.id,
+      nome: clientRecord.nome,
+      codigo: clientRecord.codigo || null,
+      segmento: clientRecord.segmento || 'Hospitalar / Saúde',
+      ativo: true
+    };
+
+    let { data, error } = await client
       .from('clientes')
       .upsert(
         {
-          user_id: user.id,
-          nome: clientRecord.nome,
-          codigo: clientRecord.codigo || null,
-          segmento: clientRecord.segmento || 'Hospitalar / Saúde',
-          ativo: true
+          ...basePayload,
+          ...(clientRecord.logoUrl !== undefined ? { logo_url: clientRecord.logoUrl || null } : {})
         },
         { onConflict: 'user_id,nome' }
       )
-      .select('id, nome, codigo, segmento')
+      .select('id, nome, codigo, segmento, logo_url')
       .single();
+
+    if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('logo_url'))) {
+      const retry = await client
+        .from('clientes')
+        .upsert(basePayload, { onConflict: 'user_id,nome' })
+        .select('id, nome, codigo, segmento')
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       if (error.code === '42P01' || error.code === 'PGRST205') return null;
@@ -981,16 +1003,29 @@ export const DataService = {
     // Carregar clientes reais se a tabela existir (preservando pendências offline)
     let clients = this.getClients();
     try {
-      const { data: cData, error: cErr } = await client
+      let { data: cData, error: cErr } = await client
         .from('clientes')
-        .select('id, nome, codigo, segmento')
+        .select('id, nome, codigo, segmento, logo_url')
         .eq('ativo', true)
         .order('nome', { ascending: true });
+      if (cErr && (cErr.code === '42703' || cErr.code === 'PGRST204' || cErr.message?.includes('logo_url'))) {
+        const retry = await client
+          .from('clientes')
+          .select('id, nome, codigo, segmento')
+          .eq('ativo', true)
+          .order('nome', { ascending: true });
+        cData = retry.data;
+        cErr = retry.error;
+      }
       if (!cErr && Array.isArray(cData)) {
+        const mappedClients = cData.map((c) => ({
+          ...c,
+          logoUrl: c.logo_url || ''
+        }));
         const delClients = new Set(pending.deleteClients || []);
         const dirtyClients = new Set(pending.upsertClients || []);
         const localByClient = new Map(clients.map((c) => [c.nome, c]));
-        const mergedClients = cData
+        const mergedClients = mappedClients
           .filter((c) => !delClients.has(c.nome))
           .map((c) => (dirtyClients.has(c.nome) && localByClient.has(c.nome) ? localByClient.get(c.nome) : c));
         const seenClientNames = new Set(mergedClients.map((c) => c.nome));

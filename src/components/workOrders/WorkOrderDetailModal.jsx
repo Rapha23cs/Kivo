@@ -105,7 +105,8 @@ export default function WorkOrderDetailModal({
   onUpdateOrder,
   linkedReport,
   previousOrder,
-  onOpenTechnicalReport
+  onOpenTechnicalReport,
+  userProfile = null
 }) {
   if (!isOpen || !order) return null;
 
@@ -1503,6 +1504,19 @@ export default function WorkOrderDetailModal({
             </div>
           )}
 
+          {/* FAB Contextual Mobile (Próximo item pendente no checklist) */}
+          {activeTab === 'checklist' && countPending > 0 && (
+            <button
+              type="button"
+              onClick={handleScrollToNextPending}
+              className="sm:hidden fixed bottom-16 right-4 z-50 inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-bold text-xs shadow-2xl border border-[#34D399]"
+              title="Rolar até o próximo item pendente"
+            >
+              <ArrowDown className="w-4 h-4" />
+              <span>Próx. ({countPending})</span>
+            </button>
+          )}
+
           {/* RODAPÉ DO MODAL */}
           <div className="px-3 sm:px-4 py-2.5 border-t border-[#1F2024] bg-[#111214] flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0 pb-safe">
             <div className="text-xs text-[#71717A] hidden sm:flex items-center gap-2">
@@ -1555,6 +1569,7 @@ export default function WorkOrderDetailModal({
       {showReportModal && (
         <TechnicalReportView
           order={currentOrder}
+          userProfile={userProfile}
           onClose={() => setShowReportModal(false)}
         />
       )}

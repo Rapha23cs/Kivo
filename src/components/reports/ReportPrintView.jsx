@@ -1,10 +1,11 @@
-import React from 'react';
-import { X, Printer, FileBarChart2, Building2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Printer, FileBarChart2, Building2, BookOpen } from 'lucide-react';
 import { PHOTO_SECTIONS, calculateAdherenceLevel } from '../../data/reportTemplateData';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import QrCodeSvg from '../common/QrCodeSvg';
 
-export default function ReportPrintView({ report, onClose }) {
+export default function ReportPrintView({ report, clientLogoUrl = '', userProfile = null, onClose }) {
+  const [showCover, setShowCover] = useState(true);
   if (!report) return null;
 
   const aderencia = report.nivelAderencia || calculateAdherenceLevel(report.indiceConformidade);
@@ -41,7 +42,20 @@ export default function ReportPrintView({ report, onClose }) {
               {report.codigoRelatorio}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowCover((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition ${
+                showCover
+                  ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40'
+                  : 'bg-[#1C1D22] text-[#A1A1AA] border-[#2D2F36]'
+              }`}
+              title="Exibir ou ocultar capa executiva na página 1"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Capa Executiva</span>
+            </button>
             <button
               type="button"
               onClick={() => window.print()}
@@ -62,12 +76,85 @@ export default function ReportPrintView({ report, onClose }) {
 
         {/* Corpo Imprimível */}
         <div className="p-8 sm:p-10 overflow-y-auto space-y-8 text-sm bg-white print:p-4">
+          {/* CAPA EXECUTIVA OPCIONAL (PÁGINA 1) */}
+          {showCover && (
+            <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50/50 p-6 sm:p-10 space-y-6 print:break-after-page">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-5">
+                <div className="flex items-center gap-3">
+                  <img src="/icon.svg" alt="Logo Kivo" className="w-11 h-11 rounded-xl shrink-0" />
+                  <div>
+                    <span className="text-base font-black tracking-tight text-slate-900 block leading-none">KIVO</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-700 font-semibold">
+                      Auditoria &amp; Conformidade Ambiental
+                    </span>
+                  </div>
+                </div>
+                {clientLogoUrl && (
+                  <img
+                    src={sanitizeMediaUrl(clientLogoUrl)}
+                    alt={`Logo ${report.clienteNome || 'Cliente'}`}
+                    className="h-11 w-auto max-w-[140px] object-contain bg-white border border-slate-200 rounded-lg px-2 py-1"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2 py-2">
+                <span className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold uppercase tracking-wider">
+                  Relatório Técnico de Inspeção Ambiental
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight">
+                  {report.unidade || 'Unidade Auditada'}
+                </h2>
+                <p className="text-sm font-medium text-slate-600">
+                  {report.clienteNome || 'Cliente'} • {report.cidade || 'Município não informado'}
+                  {report.regional ? ` • ${report.regional}` : ''}
+                </p>
+              </div>
+
+              {report.fachadaUrl && (
+                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                  <img
+                    src={sanitizeMediaUrl(report.fachadaUrl)}
+                    alt="Fachada da Unidade"
+                    className="w-full h-56 sm:h-64 object-cover"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="bg-white border border-slate-200 rounded-xl p-3">
+                  <span className="text-[10px] uppercase text-slate-500 font-semibold block">Código</span>
+                  <span className="font-mono font-bold text-slate-900">{report.codigoRelatorio}</span>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl p-3">
+                  <span className="text-[10px] uppercase text-slate-500 font-semibold block">Índice Geral</span>
+                  <span className="font-mono font-black text-emerald-700 text-base">
+                    {Number(report.indiceConformidade || 0).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl p-3">
+                  <span className="text-[10px] uppercase text-slate-500 font-semibold block">Aderência</span>
+                  <span className="font-bold text-slate-900">{aderencia}</span>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl p-3">
+                  <span className="text-[10px] uppercase text-slate-500 font-semibold block">Emissão</span>
+                  <span className="font-mono font-semibold text-slate-900">{formattedDate}</span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                <span>
+                  Responsável Técnico: <strong className="text-slate-900">{report.responsavel || userProfile?.name || 'Auditor Técnico'}</strong>
+                </span>
+                <span className="font-mono text-[11px] uppercase font-bold text-emerald-700">{report.status}</span>
+              </div>
+            </section>
+          )}
+
           {/* CABEÇALHO DO RELATÓRIO */}
           <div className="border-b-2 border-emerald-700 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-xl">
-                K
-              </div>
+              <img src="/icon.svg" alt="Logo Kivo" className="w-10 h-10 rounded-lg shrink-0" />
               <div>
                 <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
                   RELATÓRIO DE INSPEÇÃO AMBIENTAL
@@ -77,10 +164,19 @@ export default function ReportPrintView({ report, onClose }) {
                 </p>
               </div>
             </div>
-            <div className="text-left sm:text-right text-xs text-slate-600 font-mono space-y-0.5">
-              <p className="font-bold text-slate-900 text-sm">{report.codigoRelatorio}</p>
-              <p>Data/Hora: {formattedDate}</p>
-              <p className="font-sans text-[11px] uppercase font-semibold text-emerald-700">{report.status}</p>
+            <div className="flex items-center gap-3">
+              {clientLogoUrl && (
+                <img
+                  src={sanitizeMediaUrl(clientLogoUrl)}
+                  alt={`Logo ${report.clienteNome || 'Cliente'}`}
+                  className="h-9 w-auto max-w-[110px] object-contain border border-slate-200 rounded px-1.5 py-0.5 bg-white"
+                />
+              )}
+              <div className="text-left sm:text-right text-xs text-slate-600 font-mono space-y-0.5">
+                <p className="font-bold text-slate-900 text-sm">{report.codigoRelatorio}</p>
+                <p>Data/Hora: {formattedDate}</p>
+                <p className="font-sans text-[11px] uppercase font-semibold text-emerald-700">{report.status}</p>
+              </div>
             </div>
           </div>
 
@@ -289,6 +385,37 @@ export default function ReportPrintView({ report, onClose }) {
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-800 leading-relaxed whitespace-pre-line">
               {report.conclusaoTexto || 'Conclusão técnica não redigida.'}
+            </div>
+          </section>
+
+          {/* Bloco Formal de Assinaturas */}
+          <section className="pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-8 break-inside-avoid text-center text-xs">
+            <div className="space-y-1">
+              <div className="h-14 flex items-end justify-center">
+                {userProfile?.signatureUrl && (
+                  <img
+                    src={sanitizeMediaUrl(userProfile.signatureUrl)}
+                    alt="Assinatura do Responsável Técnico"
+                    className="max-h-12 max-w-[180px] object-contain"
+                  />
+                )}
+              </div>
+              <div className="border-t border-slate-400 pt-2">
+                <p className="font-bold text-slate-900">
+                  {report.responsavel || userProfile?.name || 'Responsável Técnico'}
+                </p>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  {userProfile?.registry || 'Auditor Ambiental • RT'}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="h-14" />
+              <div className="border-t border-slate-400 pt-2">
+                <p className="font-bold text-slate-900">Gestor / Representante da Unidade</p>
+                <p className="text-[11px] text-slate-500">{report.unidade || 'Unidade Auditada'}</p>
+              </div>
             </div>
           </section>
 

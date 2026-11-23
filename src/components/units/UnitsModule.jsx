@@ -14,11 +14,14 @@ import {
   X,
   Check,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Upload
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
+import { compressImageToDataUrl } from '../../supabase/dataService';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 const UNIT_TYPES = [
   'Hospital',
@@ -66,7 +69,13 @@ export default function UnitsModule({
   const [savingUnit, setSavingUnit] = useState(false);
 
   const [isClientsModalOpen, setIsClientsModalOpen] = useState(false);
-  const [newClientForm, setNewClientForm] = useState({ id: null, nome: '', codigo: '', segmento: 'Hospitalar / Saúde' });
+  const [newClientForm, setNewClientForm] = useState({
+    id: null,
+    nome: '',
+    codigo: '',
+    segmento: 'Hospitalar / Saúde',
+    logoUrl: ''
+  });
   const [savingClient, setSavingClient] = useState(false);
 
   const [historyUnit, setHistoryUnit] = useState(null);
@@ -141,7 +150,7 @@ export default function UnitsModule({
       const isEdit = Boolean(newClientForm?.id);
       const savedName = newClientForm?.nome;
       await onSaveClient(newClientForm);
-      setNewClientForm({ id: null, nome: '', codigo: '', segmento: 'Hospitalar / Saúde' });
+      setNewClientForm({ id: null, nome: '', codigo: '', segmento: 'Hospitalar / Saúde', logoUrl: '' });
       toast.success({
         title: isEdit ? 'Cliente atualizado' : 'Cliente adicionado',
         message: savedName
@@ -614,7 +623,7 @@ export default function UnitsModule({
                     className="bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] font-mono focus:border-[#2EB88A] focus:outline-none"
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <input
                     type="text"
                     value={newClientForm.segmento}
@@ -622,6 +631,26 @@ export default function UnitsModule({
                     placeholder="Segmento (ex: Hospitalar / Saúde)"
                     className="flex-1 bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                   />
+                  <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#0D0E10] hover:bg-[#1C1D22] border border-[#27282E] rounded-lg text-[11px] text-[#E4E4E7] cursor-pointer transition shrink-0">
+                    <Upload className="w-3.5 h-3.5 text-[#34D399]" />
+                    <span>{newClientForm.logoUrl ? 'Logo anexada ✓' : 'Logo White-label'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        try {
+                          const dataUrl = await compressImageToDataUrl(file, 320, 0.85);
+                          setNewClientForm((prev) => ({ ...prev, logoUrl: dataUrl }));
+                        } catch (err) {
+                          toast.error({ title: 'Logo inválida', message: err.message });
+                        }
+                      }}
+                    />
+                  </label>
                   <button
                     type="submit"
                     disabled={savingClient}
@@ -630,6 +659,25 @@ export default function UnitsModule({
                     {savingClient ? 'Salvando...' : newClientForm.id ? 'Atualizar' : '+ Adicionar'}
                   </button>
                 </div>
+                {newClientForm.logoUrl && (
+                  <div className="flex items-center justify-between gap-2 bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={sanitizeMediaUrl(newClientForm.logoUrl)}
+                        alt="Logo do Cliente"
+                        className="h-7 w-auto max-w-[100px] object-contain bg-white rounded px-1"
+                      />
+                      <span className="text-[11px] text-[#34D399]">Logomarca pronta para cabeçalho dos PDFs</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNewClientForm((prev) => ({ ...prev, logoUrl: '' }))}
+                      className="text-[11px] text-[#FB7185] hover:underline"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                )}
               </form>
 
               <div className="space-y-2">
@@ -641,21 +689,36 @@ export default function UnitsModule({
                       key={c.id || c.nome}
                       className="bg-[#0D0E10] border border-[#232429] rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-2"
                     >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-[#F4F4F5] truncate">{c.nome}</span>
-                          {c.codigo && (
-                            <span className="font-mono text-[10px] text-[#34D399] bg-[#122620] px-1.5 py-0.5 rounded">
-                              {c.codigo}
-                            </span>
-                          )}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {c.logoUrl && (
+                          <img
+                            src={sanitizeMediaUrl(c.logoUrl)}
+                            alt={c.nome}
+                            className="h-7 w-9 object-contain bg-white rounded px-1 border border-[#232429] shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-[#F4F4F5] truncate">{c.nome}</span>
+                            {c.codigo && (
+                              <span className="font-mono text-[10px] text-[#34D399] bg-[#122620] px-1.5 py-0.5 rounded">
+                                {c.codigo}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-[#71717A]">{c.segmento || 'Hospitalar / Saúde'}</span>
                         </div>
-                        <span className="text-[11px] text-[#71717A]">{c.segmento || 'Hospitalar / Saúde'}</span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
-                          onClick={() => setNewClientForm({ id: c.id, nome: c.nome, codigo: c.codigo || '', segmento: c.segmento || 'Hospitalar / Saúde' })}
+                          onClick={() => setNewClientForm({
+                            id: c.id,
+                            nome: c.nome,
+                            codigo: c.codigo || '',
+                            segmento: c.segmento || 'Hospitalar / Saúde',
+                            logoUrl: c.logoUrl || ''
+                          })}
                           className="p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded hover:bg-[#1C1D22]"
                         >
                           <Edit3 className="w-3.5 h-3.5" />

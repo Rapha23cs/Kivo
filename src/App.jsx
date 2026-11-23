@@ -158,6 +158,26 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('kivo_theme') === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    try {
+      localStorage.setItem('kivo_theme', theme);
+    } catch {
+      // ignora
+    }
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -629,10 +649,12 @@ export default function App() {
           pendingSyncCount={pendingSyncCount}
           isSyncing={isSyncing}
           onSyncNow={handleSyncNow}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8">
-          <div className="max-w-7xl mx-auto space-y-6">
+          <div key={activeTab} className="max-w-7xl mx-auto space-y-6 animate-fade-in">
             {activeTab === 'dashboard' && (
               <DashboardOverview
                 orders={displayedOrders}
@@ -688,6 +710,7 @@ export default function App() {
                 reports={displayedReports}
                 orders={displayedOrders}
                 units={displayedUnits}
+                clients={clients}
                 hospitals={clients.map((c) => ({ clientName: c.nome, name: '' }))}
                 userProfile={userProfile}
                 initialEditingReport={pendingReportToOpen}
@@ -722,6 +745,7 @@ export default function App() {
           linkedReport={findReportForOrder(selectedOrder)}
           previousOrder={findPreviousOrderForUnit(selectedOrder)}
           onOpenTechnicalReport={handleOpenTechnicalReportFromOrder}
+          userProfile={userProfile}
         />
       )}
 

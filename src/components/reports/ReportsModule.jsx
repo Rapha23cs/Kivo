@@ -25,6 +25,7 @@ export default function ReportsModule({
   reports,
   orders,
   units = [],
+  clients = [],
   hospitals,
   userProfile,
   onSaveReport,
@@ -376,6 +377,12 @@ export default function ReportsModule({
           linkedOrder={findLinkedOrder(editingReport)}
           units={units}
           userProfile={userProfile}
+          clientLogoUrl={
+            clients.find(
+              (c) =>
+                (c.nome || '').trim().toLowerCase() === (editingReport.clienteNome || '').trim().toLowerCase()
+            )?.logoUrl || ''
+          }
           onClose={() => setEditingReport(null)}
           onLocalDraftUpdate={onLocalDraftUpdate}
           onSaveReport={async (saved) => {
@@ -385,7 +392,17 @@ export default function ReportsModule({
       )}
 
       {printingReport && (
-        <ReportPrintView report={printingReport} onClose={() => setPrintingReport(null)} />
+        <ReportPrintView
+          report={printingReport}
+          userProfile={userProfile}
+          clientLogoUrl={
+            clients.find(
+              (c) =>
+                (c.nome || '').trim().toLowerCase() === (printingReport.clienteNome || '').trim().toLowerCase()
+            )?.logoUrl || ''
+          }
+          onClose={() => setPrintingReport(null)}
+        />
       )}
     </div>
   );

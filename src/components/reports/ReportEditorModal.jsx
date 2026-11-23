@@ -58,7 +58,8 @@ export default function ReportEditorModal({
   onLocalDraftUpdate,
   linkedOrder,
   units = [],
-  userProfile
+  userProfile,
+  clientLogoUrl = ''
 }) {
   const { toast, confirm } = useFeedback();
   const resumeStorageKey = report?.codigoRelatorio
@@ -1550,7 +1551,12 @@ export default function ReportEditorModal({
       </div>
 
       {showPrintView && (
-        <ReportPrintView report={draft} onClose={() => setShowPrintView(false)} />
+        <ReportPrintView
+          report={draft}
+          clientLogoUrl={clientLogoUrl}
+          userProfile={userProfile}
+          onClose={() => setShowPrintView(false)}
+        />
       )}
 
       <ImageLightboxModal

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
 import LegalInfoModal from '../common/LegalInfoModal';
+import KivoLogo from '../common/KivoLogo';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -122,12 +123,12 @@ export default function LoginScreen({
     password.length === 0
       ? ''
       : passwordScore <= 1
-      ? 'Fraca'
-      : passwordScore === 2
-      ? 'Razoável'
-      : passwordScore === 3
-      ? 'Boa'
-      : 'Forte';
+        ? 'Fraca'
+        : passwordScore === 2
+          ? 'Razoável'
+          : passwordScore === 3
+            ? 'Boa'
+            : 'Forte';
 
   const handleResendConfirmation = async () => {
     if (!emailValid) return;
@@ -271,18 +272,8 @@ export default function LoginScreen({
         />
 
         {/* Marca */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#1E2025] border border-[#2D2F36] text-[#F4F4F5] flex items-center justify-center font-black text-lg">
-            K
-          </div>
-          <div>
-            <span className="font-bold text-[#F4F4F5] text-lg tracking-tight block leading-none">
-              KIVO
-            </span>
-            <span className="text-[11px] font-mono text-[#71717A] uppercase tracking-widest mt-1 block">
-              Auditoria & Inspeção Ambiental
-            </span>
-          </div>
+        <div className="relative z-10">
+          <KivoLogo size="lg" subtitle="Auditoria & Inspeção Ambiental" />
         </div>
 
         {/* Proposta de Valor + Mini Preview do Checklist */}
@@ -351,14 +342,8 @@ export default function LoginScreen({
             </button>
           )}
           {/* Header mobile da marca */}
-          <div className="flex lg:hidden items-center gap-3 justify-center">
-            <div className="w-9 h-9 rounded-xl bg-[#1E2025] border border-[#2D2F36] text-[#F4F4F5] flex items-center justify-center font-black text-base">
-              K
-            </div>
-            <div>
-              <h1 className="font-bold text-[#F4F4F5] text-base leading-none">KIVO</h1>
-              <p className="text-[11px] text-[#71717A] mt-0.5">Auditoria & Inspeção Ambiental</p>
-            </div>
+          <div className="flex lg:hidden justify-center">
+            <KivoLogo size="md" subtitle="Auditoria & Inspeção Ambiental" />
           </div>
 
           <div className="bg-[#141518] border border-[#232429] rounded-2xl p-6 sm:p-7 space-y-6">
@@ -368,22 +353,20 @@ export default function LoginScreen({
                 <button
                   type="button"
                   onClick={() => switchMode('login')}
-                  className={`py-2 rounded-lg font-medium transition ${
-                    mode === 'login'
+                  className={`py-2 rounded-lg font-medium transition ${mode === 'login'
                       ? 'bg-[#1E2025] text-[#F4F4F5] border border-[#2D2F36]'
                       : 'text-[#71717A] hover:text-[#E4E4E7]'
-                  }`}
+                    }`}
                 >
                   Entrar
                 </button>
                 <button
                   type="button"
                   onClick={() => switchMode('signup')}
-                  className={`py-2 rounded-lg font-medium transition ${
-                    mode === 'signup'
+                  className={`py-2 rounded-lg font-medium transition ${mode === 'signup'
                       ? 'bg-[#1E2025] text-[#F4F4F5] border border-[#2D2F36]'
                       : 'text-[#71717A] hover:text-[#E4E4E7]'
-                  }`}
+                    }`}
                 >
                   Criar Conta
                 </button>
@@ -420,11 +403,10 @@ export default function LoginScreen({
             {feedback && (
               <div
                 role="alert"
-                className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 leading-relaxed ${
-                  feedback.type === 'success'
+                className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 leading-relaxed ${feedback.type === 'success'
                     ? 'bg-[#122620] border-[#2EB88A]/40 text-[#34D399]'
                     : 'bg-[#221216] border-[#F43F5E]/40 text-[#FB7185]'
-                }`}
+                  }`}
               >
                 {feedback.type === 'success' ? (
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
@@ -468,11 +450,10 @@ export default function LoginScreen({
                         onChange={(e) => setFullName(e.target.value)}
                         onBlur={() => setTouched((t) => ({ ...t, fullName: true }))}
                         placeholder="Ex: Ana Paula Ferreira"
-                        className={`w-full bg-[#0D0E10] border rounded-lg pl-9 pr-3 py-2 text-sm text-[#F4F4F5] placeholder-[#71717A] focus:outline-none transition ${
-                          touched.fullName && !nameValid
+                        className={`w-full bg-[#0D0E10] border rounded-lg pl-9 pr-3 py-2 text-sm text-[#F4F4F5] placeholder-[#71717A] focus:outline-none transition ${touched.fullName && !nameValid
                             ? 'border-[#F43F5E]/60 focus:border-[#F43F5E]'
                             : 'border-[#27282E] focus:border-[#2EB88A]'
-                        }`}
+                          }`}
                       />
                     </div>
                     {touched.fullName && !nameValid && (
@@ -516,11 +497,10 @@ export default function LoginScreen({
                       onChange={(e) => setEmail(e.target.value)}
                       onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                       placeholder="auditor@empresa.com"
-                      className={`w-full bg-[#0D0E10] border rounded-lg pl-9 pr-3 py-2 text-sm text-[#F4F4F5] placeholder-[#71717A] focus:outline-none transition ${
-                        touched.email && email.length > 0 && !emailValid
+                      className={`w-full bg-[#0D0E10] border rounded-lg pl-9 pr-3 py-2 text-sm text-[#F4F4F5] placeholder-[#71717A] focus:outline-none transition ${touched.email && email.length > 0 && !emailValid
                           ? 'border-[#F43F5E]/60 focus:border-[#F43F5E]'
                           : 'border-[#27282E] focus:border-[#2EB88A]'
-                      }`}
+                        }`}
                     />
                   </div>
                   {touched.email && email.length > 0 && !emailValid && (
@@ -575,15 +555,14 @@ export default function LoginScreen({
                         {[1, 2, 3, 4].map((step) => (
                           <div
                             key={step}
-                            className={`h-1 rounded-full transition ${
-                              passwordScore >= step
+                            className={`h-1 rounded-full transition ${passwordScore >= step
                                 ? passwordScore <= 1
                                   ? 'bg-[#FB7185]'
                                   : passwordScore === 2
-                                  ? 'bg-[#A1A1AA]'
-                                  : 'bg-[#2EB88A]'
+                                    ? 'bg-[#A1A1AA]'
+                                    : 'bg-[#2EB88A]'
                                 : 'bg-[#232429]'
-                            }`}
+                              }`}
                           />
                         ))}
                       </div>
@@ -612,11 +591,10 @@ export default function LoginScreen({
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       onBlur={() => setTouched((t) => ({ ...t, confirmPassword: true }))}
                       placeholder="Repita a senha"
-                      className={`w-full bg-[#0D0E10] border rounded-lg pl-9 pr-3 py-2 text-sm text-[#F4F4F5] placeholder-[#71717A] focus:outline-none transition ${
-                        touched.confirmPassword && confirmPassword.length > 0 && !passwordsMatch
+                      className={`w-full bg-[#0D0E10] border rounded-lg pl-9 pr-3 py-2 text-sm text-[#F4F4F5] placeholder-[#71717A] focus:outline-none transition ${touched.confirmPassword && confirmPassword.length > 0 && !passwordsMatch
                           ? 'border-[#F43F5E]/60 focus:border-[#F43F5E]'
                           : 'border-[#27282E] focus:border-[#2EB88A]'
-                      }`}
+                        }`}
                     />
                   </div>
                   {touched.confirmPassword && confirmPassword.length > 0 && !passwordsMatch && (
@@ -637,12 +615,12 @@ export default function LoginScreen({
                   {loading
                     ? 'Processando...'
                     : mode === 'login'
-                    ? 'Entrar no Kivo'
-                    : mode === 'signup'
-                    ? 'Criar minha conta'
-                    : mode === 'forgot'
-                    ? 'Enviar link de recuperação'
-                    : 'Salvar nova senha'}
+                      ? 'Entrar no Kivo'
+                      : mode === 'signup'
+                        ? 'Criar minha conta'
+                        : mode === 'forgot'
+                          ? 'Enviar link de recuperação'
+                          : 'Salvar nova senha'}
                 </span>
               </button>
             </form>

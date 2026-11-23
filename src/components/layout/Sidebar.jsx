@@ -9,6 +9,8 @@ import {
   LogOut,
   X
 } from 'lucide-react';
+import KivoLogo from '../common/KivoLogo';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function Sidebar({
   activeTab,
@@ -71,19 +73,7 @@ export default function Sidebar({
       <div>
         {/* Brand Logo */}
         <div className="h-16 flex items-center justify-between gap-3 px-5 border-b border-[#1F2024]">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#1E2025] border border-[#2D2F36] text-[#F4F4F5] flex items-center justify-center font-black text-base">
-              K
-            </div>
-            <div>
-              <h1 className="font-bold text-[#F4F4F5] text-base tracking-tight font-sans leading-tight">
-                KIVO{' '}
-                <span className="text-[10px] font-medium text-[#71717A] uppercase tracking-widest block font-mono">
-                  Inspeções Ambientais
-                </span>
-              </h1>
-            </div>
-          </div>
+          <KivoLogo size="md" subtitle="Inspeções Ambientais" />
 
           {onClose && (
             <button
@@ -155,9 +145,17 @@ export default function Sidebar({
             onClick={() => handleSelect('profile')}
             className="flex items-center gap-2.5 cursor-pointer overflow-hidden flex-1"
           >
-            <div className="w-7 h-7 rounded-full bg-[#1E2025] border border-[#2E3038] text-[#F4F4F5] font-bold flex items-center justify-center text-xs shrink-0">
-              {userProfile?.name?.charAt(0) || 'A'}
-            </div>
+            {userProfile?.avatarUrl ? (
+              <img
+                src={sanitizeMediaUrl(userProfile.avatarUrl)}
+                alt={userProfile?.name || 'Auditor Técnico'}
+                className="w-7 h-7 rounded-full object-cover border border-[#2EB88A]/50 shrink-0"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-[#1E2025] border border-[#2E3038] text-[#F4F4F5] font-bold flex items-center justify-center text-xs shrink-0">
+                {userProfile?.name?.charAt(0) || 'A'}
+              </div>
+            )}
             <div className="overflow-hidden">
               <span className="font-semibold text-[#F4F4F5] text-xs block truncate leading-tight">
                 {userProfile?.name || 'Auditor Técnico'}

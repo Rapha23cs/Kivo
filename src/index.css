@@ -15,6 +15,22 @@
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
+/* Microinterações e animações suaves */
+@keyframes kivoFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: kivoFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* Custom scrollbars in matte black & neutral carbon */
 ::-webkit-scrollbar {
   width: 6px;
@@ -52,6 +68,141 @@
   color: #A1A1AA;
 }
 
+/* ============================================================================
+   MODO CLARO / ALTO CONTRASTE CAMPO SOB SOL FORTE (data-theme="light")
+   ============================================================================ */
+html[data-theme="light"],
+html[data-theme="light"] body {
+  background-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #E2E8F0;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}
+
+/* Superfícies primárias e cards */
+html[data-theme="light"] .bg-\[\#0B0B0D\],
+html[data-theme="light"] .bg-\[\#0D0E10\],
+html[data-theme="light"] .bg-\[\#0E0F12\] {
+  background-color: #F8FAFC !important;
+}
+
+html[data-theme="light"] .bg-\[\#111214\],
+html[data-theme="light"] .bg-\[\#111214\]\/95 {
+  background-color: #FFFFFF !important;
+}
+
+html[data-theme="light"] .bg-\[\#0D0E10\]\/95 {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+}
+
+html[data-theme="light"] .bg-\[\#141518\],
+html[data-theme="light"] .bg-\[\#151619\],
+html[data-theme="light"] .bg-\[\#16171B\],
+html[data-theme="light"] .bg-\[\#17181B\] {
+  background-color: #FFFFFF !important;
+}
+
+html[data-theme="light"] .bg-\[\#18191D\],
+html[data-theme="light"] .bg-\[\#181A1F\],
+html[data-theme="light"] .bg-\[\#191A1F\],
+html[data-theme="light"] .bg-\[\#1A1B20\],
+html[data-theme="light"] .bg-\[\#1C1D22\],
+html[data-theme="light"] .bg-\[\#1E2025\],
+html[data-theme="light"] .bg-\[\#22242A\],
+html[data-theme="light"] .bg-\[\#25272E\] {
+  background-color: #F1F5F9 !important;
+}
+
+/* Hover states em claro */
+html[data-theme="light"] .hover\:bg-\[\#17181B\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#18191D\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#191A1F\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#1C1D22\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#1E2025\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#22242A\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#23252C\]:hover,
+html[data-theme="light"] .hover\:bg-\[\#25272E\]:hover {
+  background-color: #E2E8F0 !important;
+}
+
+/* Superfícies temáticas (verde esmeralda, alerta, erro) */
+html[data-theme="light"] .bg-\[\#122620\],
+html[data-theme="light"] .bg-\[\#111715\],
+html[data-theme="light"] .bg-\[\#141D1A\] {
+  background-color: #ECFDF5 !important;
+}
+html[data-theme="light"] .hover\:bg-\[\#17322A\]:hover {
+  background-color: #D1FAE5 !important;
+}
+html[data-theme="light"] .bg-\[\#221A10\],
+html[data-theme="light"] .bg-\[\#17140F\] {
+  background-color: #FFFBEB !important;
+}
+html[data-theme="light"] .bg-\[\#221216\],
+html[data-theme="light"] .bg-\[\#1C1216\],
+html[data-theme="light"] .bg-\[\#181113\],
+html[data-theme="light"] .bg-\[\#181214\] {
+  background-color: #FFF1F2 !important;
+}
+
+/* Bordas */
+html[data-theme="light"] .border-\[\#1F2024\],
+html[data-theme="light"] .border-\[\#232429\],
+html[data-theme="light"] .border-\[\#27282E\],
+html[data-theme="light"] .border-\[\#2C2E36\],
+html[data-theme="light"] .border-\[\#2D2F36\],
+html[data-theme="light"] .border-\[\#32343C\] {
+  border-color: #CBD5E1 !important;
+}
+
+/* Textos de alto contraste */
+html[data-theme="light"] .text-\[\#F4F4F5\],
+html[data-theme="light"] .text-\[\#E4E4E7\],
+html[data-theme="light"] .text-\[\#D4D4D8\] {
+  color: #0F172A !important;
+}
+
+html[data-theme="light"] .text-\[\#A1A1AA\],
+html[data-theme="light"] .text-\[\#8E9299\],
+html[data-theme="light"] .text-\[\#CBD5E1\] {
+  color: #475569 !important;
+}
+
+html[data-theme="light"] .text-\[\#71717A\] {
+  color: #64748B !important;
+}
+
+html[data-theme="light"] .text-\[\#34D399\] {
+  color: #047857 !important;
+}
+
+html[data-theme="light"] .text-\[\#FB7185\] {
+  color: #BE123C !important;
+}
+
+html[data-theme="light"] .text-\[\#FBBF24\] {
+  color: #B45309 !important;
+}
+
+html[data-theme="light"] .hover\:text-\[\#F4F4F5\]:hover {
+  color: #0F172A !important;
+}
+
+html[data-theme="light"] select option.bg-\[\#141518\] {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+}
+
+/* Preserva texto escuro em botões primários esmeralda */
+html[data-theme="light"] .bg-\[\#2EB88A\] {
+  color: #06281E !important;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -64,4 +215,3 @@
     color: black !important;
   }
 }
-

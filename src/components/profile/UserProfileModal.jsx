@@ -11,9 +11,14 @@ import {
   ShieldCheck,
   AlertTriangle,
   WifiOff,
-  Cloud
+  Cloud,
+  Upload,
+  PenTool,
+  Trash2
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
+import { compressImageToDataUrl } from '../../supabase/dataService';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import { useFeedback } from '../common/FeedbackProvider';
 
 export default function UserProfileModal({
@@ -64,6 +69,18 @@ export default function UserProfileModal({
       setProfileFeedback({ type: 'error', text: err.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleProfileImageUpload = async (field, maxWidth, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const dataUrl = await compressImageToDataUrl(file, maxWidth, 0.82);
+      setProfile((prev) => ({ ...prev, [field]: dataUrl }));
+    } catch (err) {
+      setProfileFeedback({ type: 'error', text: err?.message || 'Não foi possível carregar a imagem.' });
     }
   };
 
@@ -239,6 +256,89 @@ export default function UserProfileModal({
                   {profileFeedback.text}
                 </div>
               )}
+
+              {/* Identidade Visual do RT (Foto + Assinatura para Laudos PDF) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#141518] border border-[#232429] rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  {profile.avatarUrl ? (
+                    <img
+                      src={sanitizeMediaUrl(profile.avatarUrl)}
+                      alt={profile.name || 'Foto do Auditor'}
+                      className="w-12 h-12 rounded-full object-cover border border-[#2EB88A]/50 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#0D0E10] border border-[#27282E] flex items-center justify-center text-sm font-bold text-[#F4F4F5] shrink-0">
+                      {profile.name?.charAt(0) || 'A'}
+                    </div>
+                  )}
+                  <div className="space-y-1 min-w-0">
+                    <span className="text-[11px] font-semibold text-[#F4F4F5] block">Foto do Perfil RT</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-md text-[11px] text-[#E4E4E7] cursor-pointer transition">
+                        <Upload className="w-3 h-3 text-[#34D399]" />
+                        <span>{profile.avatarUrl ? 'Trocar' : 'Enviar foto'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleProfileImageUpload('avatarUrl', 280, e)}
+                        />
+                      </label>
+                      {profile.avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setProfile((prev) => ({ ...prev, avatarUrl: '' }))}
+                          className="p-1 text-[#71717A] hover:text-[#FB7185] transition"
+                          title="Remover foto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-[#F4F4F5] flex items-center gap-1">
+                      <PenTool className="w-3 h-3 text-[#34D399]" />
+                      Assinatura Digital (Laudos PDF)
+                    </span>
+                    {profile.signatureUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setProfile((prev) => ({ ...prev, signatureUrl: '' }))}
+                        className="text-[10px] text-[#FB7185] hover:underline"
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    {profile.signatureUrl ? (
+                      <div className="bg-white rounded-md px-2 py-1 border border-[#27282E] h-10 flex items-center justify-center">
+                        <img
+                          src={sanitizeMediaUrl(profile.signatureUrl)}
+                          alt="Assinatura RT"
+                          className="max-h-8 max-w-[120px] object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-[#71717A] italic">Nenhuma assinatura enviada</span>
+                    )}
+                    <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-md text-[11px] text-[#E4E4E7] cursor-pointer transition shrink-0">
+                      <Upload className="w-3 h-3 text-[#34D399]" />
+                      <span>{profile.signatureUrl ? 'Substituir' : 'Enviar imagem'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleProfileImageUpload('signatureUrl', 480, e)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
