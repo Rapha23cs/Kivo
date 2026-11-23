@@ -11,7 +11,8 @@ import {
   AlertOctagon,
   Building2,
   Calendar,
-  Link2
+  Link2,
+  Globe
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -254,6 +255,15 @@ export default function ReportsModule({
                       <Badge variant={rep.status === 'finalizado' ? 'success' : 'warning'} size="sm">
                         {rep.status === 'finalizado' ? 'Finalizado' : 'Rascunho'}
                       </Badge>
+                      {rep.publicEnabled && rep.publicToken && (
+                        <span
+                          title="Portal público ativo para visualização externa do cliente"
+                          className="inline-flex items-center gap-1 font-mono text-[10px] text-[#34D399] bg-[#122620] px-2 py-0.5 rounded border border-[#2EB88A]/30"
+                        >
+                          <Globe className="w-2.5 h-2.5" />
+                          Público
+                        </span>
+                      )}
                       {linkedCode && (
                         <button
                           type="button"

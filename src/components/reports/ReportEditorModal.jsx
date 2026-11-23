@@ -19,7 +19,9 @@ import {
   RefreshCw,
   Link2,
   Download,
-  Share2
+  Share2,
+  Globe,
+  ExternalLink
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -84,6 +86,7 @@ export default function ReportEditorModal({
   const [showTable03Rules, setShowTable03Rules] = useState(false);
   const [uploadingKey, setUploadingKey] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [sharingLoading, setSharingLoading] = useState(false);
   const [autoSaveState, setAutoSaveState] = useState('idle'); // idle | saving | saved
   const [showPrintView, setShowPrintView] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
@@ -380,6 +383,47 @@ export default function ReportEditorModal({
     toast.success({ title: 'Resumo copiado!', message: 'Pronto para colar no WhatsApp ou e-mail.' });
   };
 
+  const handleTogglePublicShare = async () => {
+    setSharingLoading(true);
+    try {
+      const nextEnabled = !draft.publicEnabled;
+      const result = await ReportService.setPublicShare(latestDraftRef.current, nextEnabled);
+      if (!result) return;
+
+      latestDraftRef.current = result.report;
+      isDirtyRef.current = false;
+      setDraft(result.report);
+      onLocalDraftUpdate?.(ReportService.getReports());
+
+      if (nextEnabled) {
+        await copyTextToClipboard(result.shareUrl);
+        toast.success({
+          title: 'Link público ativado e copiado!',
+          message: 'O cliente já pode visualizar este laudo online ou pelo QR Code do PDF.'
+        });
+      } else {
+        toast.info({
+          title: 'Compartilhamento público desativado',
+          message: 'O link anterior não exibirá mais este relatório.'
+        });
+      }
+    } catch (err) {
+      toast.error({
+        title: 'Erro ao atualizar link público',
+        message: err?.message || 'Verifique sua conexão e tente novamente.'
+      });
+    } finally {
+      setSharingLoading(false);
+    }
+  };
+
+  const handleCopyPublicLink = async () => {
+    if (!draft.publicToken) return;
+    const shareUrl = `${window.location.origin}/laudo/${draft.publicToken}`;
+    await copyTextToClipboard(shareUrl);
+    toast.success({ title: 'Link público copiado!', message: shareUrl });
+  };
+
   const handleExportDeviationsCsv = () => {
     const list = draft.desvios || [];
     if (list.length === 0) return;
@@ -529,6 +573,35 @@ export default function ReportEditorModal({
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Finalizar Relatório
               </button>
+
+              <button
+                type="button"
+                onClick={handleTogglePublicShare}
+                disabled={sharingLoading}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition disabled:opacity-50 ${
+                  draft.publicEnabled
+                    ? 'bg-[#122620] hover:bg-[#17322A] text-[#34D399] border-[#2EB88A]/40'
+                    : 'bg-[#1C1D22] hover:bg-[#25272E] text-[#E4E4E7] border-[#2D2F36]'
+                }`}
+                title={draft.publicEnabled ? 'Portal público ativo (clique para desativar)' : 'Gerar link público somente leitura para o cliente'}
+              >
+                <Globe className="w-3.5 h-3.5 text-[#34D399]" />
+                <span className="hidden lg:inline">
+                  {sharingLoading ? 'Atualizando...' : draft.publicEnabled ? 'Link Ativo' : 'Link Cliente'}
+                </span>
+              </button>
+
+              {draft.publicEnabled && draft.publicToken && (
+                <button
+                  type="button"
+                  onClick={handleCopyPublicLink}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-[#1C1D22] hover:bg-[#25272E] text-[#34D399] border border-[#2EB88A]/30 rounded-lg transition"
+                  title="Copiar link do portal público para enviar ao cliente"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Copiar URL</span>
+                </button>
+              )}
 
               <button
                 type="button"

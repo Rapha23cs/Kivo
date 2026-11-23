@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Printer, FileBarChart2, Building2 } from 'lucide-react';
 import { PHOTO_SECTIONS, calculateAdherenceLevel } from '../../data/reportTemplateData';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
+import QrCodeSvg from '../common/QrCodeSvg';
 
 export default function ReportPrintView({ report, onClose }) {
   if (!report) return null;
@@ -291,9 +292,24 @@ export default function ReportPrintView({ report, onClose }) {
             </div>
           </section>
 
-          <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 font-mono">
-            Relatório Técnico de Inspeção Ambiental • Gerado pelo sistema Kivo
-          </div>
+          {report.publicEnabled && report.publicToken && typeof window !== 'undefined' ? (
+            <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-4">
+              <div className="text-[10px] text-slate-500 font-mono space-y-0.5">
+                <p className="font-semibold text-slate-700">
+                  Relatório Técnico de Inspeção Ambiental • Gerado pelo sistema Kivo
+                </p>
+                <p>Validação digital online disponível em:</p>
+                <p className="text-emerald-700 break-all">
+                  {`${window.location.origin}/laudo/${report.publicToken}`}
+                </p>
+              </div>
+              <QrCodeSvg value={`${window.location.origin}/laudo/${report.publicToken}`} size={68} />
+            </div>
+          ) : (
+            <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 font-mono">
+              Relatório Técnico de Inspeção Ambiental • Gerado pelo sistema Kivo
+            </div>
+          )}
         </div>
       </div>
     </div>

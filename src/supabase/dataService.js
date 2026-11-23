@@ -40,7 +40,7 @@ export function extractStoragePathFromUrl(rawUrl) {
   }
 }
 
-export async function refreshSignedMediaUrls(client, urls = []) {
+export async function refreshSignedMediaUrls(client, urls = [], ttlSeconds = SIGNED_MEDIA_TTL_SECONDS) {
   const urlMap = new Map();
   if (!client || !Array.isArray(urls) || urls.length === 0) return urlMap;
 
@@ -58,7 +58,7 @@ export async function refreshSignedMediaUrls(client, urls = []) {
   try {
     const bucket = client.storage.from('relatorios-midia');
     if (typeof bucket.createSignedUrls === 'function') {
-      const { data, error } = await bucket.createSignedUrls(uniquePaths, SIGNED_MEDIA_TTL_SECONDS);
+      const { data, error } = await bucket.createSignedUrls(uniquePaths, ttlSeconds);
       if (!error && Array.isArray(data)) {
         data.forEach((entry) => {
           if (entry?.path && entry?.signedUrl) {
@@ -72,7 +72,7 @@ export async function refreshSignedMediaUrls(client, urls = []) {
 
     const results = await Promise.all(
       uniquePaths.map(async (path) => {
-        const { data } = await bucket.createSignedUrl(path, SIGNED_MEDIA_TTL_SECONDS);
+        const { data } = await bucket.createSignedUrl(path, ttlSeconds);
         return { path, signedUrl: data?.signedUrl || null };
       })
     );

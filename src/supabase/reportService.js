@@ -595,6 +595,9 @@ export const ReportService = {
         unidadeId: row.unidade_id || null,
         inspecaoId: row.inspecao_id || null,
         inspecaoCodigo: row.inspecoes?.codigo_kivo || '',
+        publicToken: row.public_token || null,
+        publicEnabled: Boolean(row.public_enabled),
+        publicSharedAt: row.public_shared_at || null,
         desvios: (row.relatorio_desvios || [])
           .sort((a, b) => a.numero - b.numero)
           .map((d) => ({
@@ -728,7 +731,10 @@ export const ReportService = {
       pontos_positivos: report.pontosPositivos || null,
       sintese_desvios: report.sinteseDesvios || null,
       conclusao_texto: report.conclusaoTexto || null,
-      status: report.status === 'finalizado' ? 'finalizado' : 'rascunho'
+      status: report.status === 'finalizado' ? 'finalizado' : 'rascunho',
+      ...(isUuid(report.publicToken) ? { public_token: report.publicToken } : {}),
+      public_enabled: Boolean(report.publicEnabled),
+      ...(report.publicSharedAt ? { public_shared_at: report.publicSharedAt } : {})
     };
 
     const desviosPayload = (report.desvios || [])
@@ -755,7 +761,7 @@ export const ReportService = {
         incluir_no_relatorio: f.incluirNoRelatorio !== false
       }));
 
-    // Tenta persistência transacional via RPC (migration 005)
+    // Tenta persistência transacional via RPC (migration 005 / 006)
     const { data: rpcData, error: rpcError } = await client.rpc('sync_relatorio_completo', {
       p_header: headerPayload,
       p_desvios: desviosPayload,
@@ -774,7 +780,8 @@ export const ReportService = {
       rpcError.code === 'PGRST204' ||
       rpcError.message?.includes('sync_relatorio_completo') ||
       rpcError.message?.includes('Could not find the function') ||
-      rpcError.message?.includes('unidade_id');
+      rpcError.message?.includes('unidade_id') ||
+      rpcError.message?.includes('public_');
 
     if (rpcError && !canFallbackFromRpc) {
       throw new Error(rpcError.message);
@@ -799,8 +806,20 @@ export const ReportService = {
 
     let { data: savedHeader, error: headerError } = await upsertHeader(headerPayload);
 
-    if (headerError && (headerError.code === 'PGRST204' || headerError.message?.includes('unidade_id'))) {
-      const { unidade_id: _ignored, ...fallbackHeader } = headerPayload;
+    if (
+      headerError &&
+      (headerError.code === 'PGRST204' ||
+        headerError.code === '42703' ||
+        headerError.message?.includes('unidade_id') ||
+        headerError.message?.includes('public_'))
+    ) {
+      const {
+        unidade_id: _u,
+        public_token: _pt,
+        public_enabled: _pe,
+        public_shared_at: _ps,
+        ...fallbackHeader
+      } = headerPayload;
       const retry = await upsertHeader(fallbackHeader);
       savedHeader = retry.data;
       headerError = retry.error;
@@ -831,5 +850,85 @@ export const ReportService = {
     }
 
     return { ...savedHeader, inspecao_id: inspecaoId };
+  },
+
+  async setPublicShare(report, enabled = true) {
+    if (!report) return null;
+
+    const generateToken = () => {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
+    const publicToken = isUuid(report.publicToken) ? report.publicToken : generateToken();
+    let updated = {
+      ...report,
+      publicToken,
+      publicEnabled: Boolean(enabled),
+      publicSharedAt: enabled ? (report.publicSharedAt || new Date().toISOString()) : report.publicSharedAt || null
+    };
+
+    // Ao ativar compartilhamento público online, renova Signed URLs das mídias para 30 dias
+    if (enabled && isSupabaseConfigured() && navigator.onLine !== false) {
+      try {
+        const { client } = getSupabaseClient();
+        if (client) {
+          const urls = [
+            updated.fachadaUrl,
+            ...(updated.registrosFotograficos || []).map((f) => f.fotoUrl)
+          ].filter(Boolean);
+          const refreshedMap = await refreshSignedMediaUrls(client, urls, 60 * 60 * 24 * 30);
+          if (refreshedMap.size > 0) {
+            updated = {
+              ...updated,
+              fachadaUrl: refreshedMap.get(updated.fachadaUrl) || updated.fachadaUrl,
+              registrosFotograficos: (updated.registrosFotograficos || []).map((f) => ({
+                ...f,
+                fotoUrl: (f.fotoUrl && refreshedMap.get(f.fotoUrl)) || f.fotoUrl
+              }))
+            };
+          }
+        }
+      } catch {
+        // segue mantendo URLs existentes
+      }
+    }
+
+    await this.saveReport(updated);
+    const shareUrl =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/laudo/${publicToken}`
+        : `/laudo/${publicToken}`;
+
+    return { report: updated, shareUrl };
+  },
+
+  async fetchPublicReport(token) {
+    if (!isUuid(token)) return null;
+
+    if (isSupabaseConfigured() && navigator.onLine !== false) {
+      const { client } = getSupabaseClient();
+      if (client) {
+        const { data, error } = await client.rpc('get_public_report', { p_token: token });
+        if (!error && data) {
+          return data;
+        }
+        if (error && error.code !== '42883' && error.code !== 'PGRST202') {
+          throw new Error(error.message);
+        }
+      }
+    }
+
+    // Fallback local caso o auditor abra o preview no mesmo dispositivo antes de sincronizar
+    const localMatch = getStoredReports().find(
+      (r) => r.publicEnabled && r.publicToken === token
+    );
+    return localMatch || null;
   }
 };

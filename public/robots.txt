@@ -1,4 +1,14 @@
-# Kivo — Aplicação privada autenticada
-# Impede indexação automática das telas internas por buscadores
+# Kivo — Landing page pública indexável em /; rotas privadas e tokens protegidos
 User-agent: *
-Disallow: /
+Allow: /$
+Disallow: /painel
+Disallow: /dashboard
+Disallow: /vistorias
+Disallow: /relatorios
+Disallow: /unidades
+Disallow: /laudo/
+Disallow: /login
+Disallow: /entrar
+Disallow: /cadastro
+
+Sitemap: https://kivo-ctrv.onrender.com/sitemap.xml

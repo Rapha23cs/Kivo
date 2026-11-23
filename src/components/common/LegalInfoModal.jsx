@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldCheck, FileText, Mail, Copy, Check, ExternalLink } from 'lucide-react';
+import { X, ShieldCheck, FileText, Mail, Copy, Check, ExternalLink, MessageSquare } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/kivoHelpers';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'suporte@kivo.com.br';
 const SUPPORT_CHANNEL = import.meta.env.VITE_SUPPORT_CHANNEL || 'Atendimento técnico segunda a sexta, 08h às 18h (BRT)';
+const SUPPORT_WHATSAPP = (import.meta.env.VITE_SUPPORT_WHATSAPP || '').replace(/\D/g, '');
 
 export default function LegalInfoModal({ isOpen, initialTab = 'privacidade', onClose }) {
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -192,6 +193,21 @@ export default function LegalInfoModal({ isOpen, initialTab = 'privacidade', onC
                 <div className="pt-2 border-t border-[#1F2024] text-[11px] text-[#A1A1AA]">
                   <strong className="text-[#E4E4E7]">Horário de atendimento:</strong> {SUPPORT_CHANNEL}
                 </div>
+
+                {SUPPORT_WHATSAPP && (
+                  <div className="pt-2 border-t border-[#1F2024]">
+                    <a
+                      href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Olá! Preciso de suporte técnico no sistema Kivo.')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#122620] hover:bg-[#17322A] border border-[#2EB88A]/30 text-xs font-semibold text-[#34D399] transition"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Abrir atendimento no WhatsApp</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           )}

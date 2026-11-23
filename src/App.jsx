@@ -19,6 +19,9 @@ import { AppLoadingSkeleton } from './components/common/SkeletonLoader';
 import CommandPaletteModal from './components/common/CommandPaletteModal';
 import NotFoundPage from './components/common/NotFoundPage';
 import LegalInfoModal from './components/common/LegalInfoModal';
+import LandingPage from './components/public/LandingPage';
+import PublicReportPortal from './components/public/PublicReportPortal';
+import PwaInstallBanner from './components/common/PwaInstallBanner';
 
 const TAB_TITLES = {
   dashboard: 'Kivo — Meu Painel',
@@ -29,38 +32,103 @@ const TAB_TITLES = {
 
 function resolveInitialRoute() {
   if (typeof window === 'undefined') {
-    return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: false };
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: false,
+      initialAuthMode: null,
+      publicReportToken: null
+    };
   }
   const path = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+  const searchParams = new URLSearchParams(window.location.search || '');
   const hasAuthCallback =
     window.location.hash.includes('access_token=') ||
     window.location.hash.includes('type=recovery') ||
     window.location.search.includes('code=') ||
     window.location.search.includes('error=');
 
-  if (hasAuthCallback || path === '/' || path === '/index.html' || path === '/painel' || path === '/dashboard') {
-    return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: false };
-  }
-  if (path === '/vistorias') {
-    return { initialTab: 'orders', initialLegalTab: null, initialNotFound: false };
-  }
-  if (path === '/relatorios') {
-    return { initialTab: 'reports', initialLegalTab: null, initialNotFound: false };
-  }
-  if (path === '/unidades') {
-    return { initialTab: 'units', initialLegalTab: null, initialNotFound: false };
-  }
-  if (path === '/privacidade') {
-    return { initialTab: 'dashboard', initialLegalTab: 'privacidade', initialNotFound: false };
-  }
-  if (path === '/termos') {
-    return { initialTab: 'dashboard', initialLegalTab: 'termos', initialNotFound: false };
-  }
-  if (path === '/suporte') {
-    return { initialTab: 'dashboard', initialLegalTab: 'suporte', initialNotFound: false };
+  if (path.startsWith('/laudo/')) {
+    const token = path.slice('/laudo/'.length).split('/')[0] || '';
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: !token,
+      initialAuthMode: null,
+      publicReportToken: token || null
+    };
   }
 
-  return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: true };
+  if (hasAuthCallback) {
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: false,
+      initialAuthMode: 'login',
+      publicReportToken: null
+    };
+  }
+
+  if (path === '/' || path === '/index.html') {
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: false,
+      initialAuthMode: null,
+      publicReportToken: null
+    };
+  }
+
+  if (path === '/login' || path === '/entrar') {
+    const modeParam = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: false,
+      initialAuthMode: modeParam,
+      publicReportToken: null
+    };
+  }
+
+  if (path === '/cadastro') {
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: false,
+      initialAuthMode: 'signup',
+      publicReportToken: null
+    };
+  }
+
+  if (path === '/painel' || path === '/dashboard') {
+    return { initialTab: 'dashboard', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
+  }
+  if (path === '/vistorias') {
+    return { initialTab: 'orders', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
+  }
+  if (path === '/relatorios') {
+    return { initialTab: 'reports', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
+  }
+  if (path === '/unidades') {
+    return { initialTab: 'units', initialLegalTab: null, initialNotFound: false, initialAuthMode: 'login', publicReportToken: null };
+  }
+  if (path === '/privacidade') {
+    return { initialTab: 'dashboard', initialLegalTab: 'privacidade', initialNotFound: false, initialAuthMode: null, publicReportToken: null };
+  }
+  if (path === '/termos') {
+    return { initialTab: 'dashboard', initialLegalTab: 'termos', initialNotFound: false, initialAuthMode: null, publicReportToken: null };
+  }
+  if (path === '/suporte') {
+    return { initialTab: 'dashboard', initialLegalTab: 'suporte', initialNotFound: false, initialAuthMode: null, publicReportToken: null };
+  }
+
+  return {
+    initialTab: 'dashboard',
+    initialLegalTab: null,
+    initialNotFound: true,
+    initialAuthMode: null,
+    publicReportToken: null
+  };
 }
 
 export default function App() {
@@ -74,6 +142,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(initialRoute.initialTab);
   const [isNotFound, setIsNotFound] = useState(initialRoute.initialNotFound);
   const [legalModalTab, setLegalModalTab] = useState(initialRoute.initialLegalTab);
+  const [publicAuthMode, setPublicAuthMode] = useState(initialRoute.initialAuthMode);
+  const [publicReportToken, setPublicReportToken] = useState(initialRoute.publicReportToken);
   const [userProfile, setUserProfile] = useState(null);
   const [orders, setOrders] = useState([]);
   const [reports, setReports] = useState([]);
@@ -283,7 +353,40 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [clients, units, orders, reports]);
 
+  const navigatePublicAuth = (nextMode) => {
+    setPublicAuthMode(nextMode);
+    if (typeof window !== 'undefined') {
+      const target = nextMode === 'signup' ? '/cadastro' : nextMode === 'login' ? '/login' : '/';
+      if (window.location.pathname !== target) {
+        window.history.pushState({}, '', target);
+      }
+    }
+  };
+
   useEffect(() => {
+    const onPopState = () => {
+      const next = resolveInitialRoute();
+      setIsNotFound(next.initialNotFound);
+      setPublicReportToken(next.publicReportToken);
+      setPublicAuthMode(next.initialAuthMode);
+      setLegalModalTab(next.initialLegalTab);
+      if (next.initialTab) setActiveTab(next.initialTab);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    const isLandingView = supabaseEnabled && !session && !recoveryMode && !isNotFound && !publicReportToken && !publicAuthMode;
+    let robotsMeta = document.querySelector('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta');
+      robotsMeta.setAttribute('name', 'robots');
+      document.head.appendChild(robotsMeta);
+    }
+    robotsMeta.setAttribute('content', isLandingView ? 'index, follow' : 'noindex, nofollow');
+
+    if (publicReportToken) return;
     if (isNotFound) {
       document.title = 'Kivo — Página não encontrada (404)';
       return;
@@ -293,11 +396,39 @@ export default function App() {
       return;
     }
     if (supabaseEnabled && !session) {
-      document.title = 'Kivo — Acesso à Conta';
+      document.title = publicAuthMode
+        ? 'Kivo — Acesso à Conta'
+        : 'Kivo — Inspeções & Relatórios Ambientais';
       return;
     }
     document.title = TAB_TITLES[activeTab] || 'Kivo — Inspeções & Relatórios Ambientais';
-  }, [isNotFound, supabaseEnabled, recoveryMode, session, activeTab]);
+  }, [isNotFound, publicReportToken, supabaseEnabled, recoveryMode, session, publicAuthMode, activeTab]);
+
+  if (publicReportToken) {
+    return (
+      <>
+        <PublicReportPortal
+          token={publicReportToken}
+          onBackToHome={() => {
+            if (typeof window !== 'undefined') {
+              window.history.replaceState({}, '', '/');
+            }
+            setPublicReportToken(null);
+            setIsNotFound(false);
+          }}
+          onOpenLegal={(tab) => setLegalModalTab(tab)}
+        />
+        {legalModalTab && (
+          <LegalInfoModal
+            isOpen={Boolean(legalModalTab)}
+            initialTab={legalModalTab}
+            onClose={() => setLegalModalTab(null)}
+          />
+        )}
+        <PwaInstallBanner />
+      </>
+    );
+  }
 
   if (supabaseEnabled && !authChecked) {
     return <AppLoadingSkeleton />;
@@ -313,6 +444,7 @@ export default function App() {
             window.history.replaceState({}, '', '/');
           }
           setIsNotFound(false);
+          setPublicAuthMode(null);
           setActiveTab('dashboard');
         }}
       />
@@ -334,14 +466,27 @@ export default function App() {
   if (supabaseEnabled && !session) {
     return (
       <>
-        <LoginScreen
-          onLoginSuccess={(nextSession) => {
-            if (nextSession?.user) {
-              DataService.syncSessionUser(nextSession.user);
-            }
-            setSession(nextSession);
-          }}
-        />
+        {publicAuthMode ? (
+          <LoginScreen
+            initialMode={publicAuthMode}
+            onBackToLanding={() => navigatePublicAuth(null)}
+            onLoginSuccess={(nextSession) => {
+              if (nextSession?.user) {
+                DataService.syncSessionUser(nextSession.user);
+              }
+              setSession(nextSession);
+              if (typeof window !== 'undefined' && ['/login', '/entrar', '/cadastro'].includes(window.location.pathname)) {
+                window.history.replaceState({}, '', '/');
+              }
+            }}
+          />
+        ) : (
+          <LandingPage
+            onOpenLogin={() => navigatePublicAuth('login')}
+            onOpenSignup={() => navigatePublicAuth('signup')}
+            onOpenLegal={(tab) => setLegalModalTab(tab)}
+          />
+        )}
         {legalModalTab && (
           <LegalInfoModal
             isOpen={Boolean(legalModalTab)}
@@ -354,6 +499,7 @@ export default function App() {
             }}
           />
         )}
+        <PwaInstallBanner />
       </>
     );
   }
@@ -643,6 +789,8 @@ export default function App() {
           }
         }}
       />
+
+      <PwaInstallBanner />
     </div>
   );
 }

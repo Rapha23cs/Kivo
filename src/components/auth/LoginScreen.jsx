@@ -67,7 +67,12 @@ function translateAuthError(error) {
   };
 }
 
-export default function LoginScreen({ onLoginSuccess, initialMode = 'login', onRecoveryComplete }) {
+export default function LoginScreen({
+  onLoginSuccess,
+  initialMode = 'login',
+  onRecoveryComplete,
+  onBackToLanding
+}) {
   // Modos: 'login' | 'signup' | 'forgot' | 'recovery'
   const [mode, setMode] = useState(initialMode);
 
@@ -335,6 +340,16 @@ export default function LoginScreen({ onLoginSuccess, initialMode = 'login', onR
       {/* Coluna Direita: Formulário de Autenticação */}
       <main className="flex-1 flex flex-col items-center justify-center p-5 sm:p-8">
         <div className="w-full max-w-[410px] space-y-6">
+          {onBackToLanding && (
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              className="inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#34D399] transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Voltar à página inicial</span>
+            </button>
+          )}
           {/* Header mobile da marca */}
           <div className="flex lg:hidden items-center gap-3 justify-center">
             <div className="w-9 h-9 rounded-xl bg-[#1E2025] border border-[#2D2F36] text-[#F4F4F5] flex items-center justify-center font-black text-base">
