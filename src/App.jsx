@@ -43,6 +43,15 @@ const TAB_TITLES = {
   units: 'Kivo — Clientes, Unidades & SST'
 };
 
+const TAB_PATHS = {
+  dashboard: '/painel',
+  orders: '/vistorias',
+  actions: '/acoes',
+  agenda: '/agenda',
+  reports: '/relatorios',
+  units: '/unidades'
+};
+
 function resolveInitialRoute() {
   if (typeof window === 'undefined') {
     return {
@@ -535,6 +544,10 @@ export default function App() {
     setSstItems([]);
     setUserProfile(null);
     setSelectedOrder(null);
+    setPublicAuthMode(null);
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/');
+    }
   };
 
   const handleSaveTemplate = async (tpl) => {
@@ -745,6 +758,32 @@ export default function App() {
     return list.slice(0, 20);
   }, [schedules, sstItems, pendingSyncCount]);
 
+  const navigateToTab = (nextTab, { replace = false } = {}) => {
+    const resolvedTab = TAB_PATHS[nextTab] ? nextTab : 'dashboard';
+    setActiveTab(resolvedTab);
+    if (typeof window !== 'undefined') {
+      const targetPath = TAB_PATHS[resolvedTab] || '/painel';
+      const currentFull = `${window.location.pathname}${window.location.search}`;
+      if (currentFull !== targetPath) {
+        if (replace) {
+          window.history.replaceState({}, '', targetPath);
+        } else {
+          window.history.pushState({}, '', targetPath);
+        }
+      }
+    }
+  };
+
+  const openLegalRoute = (tab) => {
+    setLegalModalTab(tab);
+    if (typeof window !== 'undefined' && ['privacidade', 'termos', 'suporte'].includes(tab)) {
+      const target = `/${tab}`;
+      if (window.location.pathname !== target) {
+        window.history.pushState({}, '', target);
+      }
+    }
+  };
+
   const navigatePublicAuth = (nextMode) => {
     setPublicAuthMode(nextMode);
     if (typeof window !== 'undefined') {
@@ -767,6 +806,17 @@ export default function App() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (publicReportToken || isNotFound || recoveryMode || legalModalTab) return;
+    if (supabaseEnabled && (!authChecked || !session || mfaRequired)) return;
+    if (window.location.hash.includes('access_token=') || window.location.search.includes('code=')) return;
+    const expectedPath = TAB_PATHS[activeTab] || '/painel';
+    if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+      window.history.replaceState({}, '', expectedPath);
+    }
+  }, [supabaseEnabled, authChecked, session, mfaRequired, recoveryMode, publicReportToken, isNotFound, legalModalTab, activeTab]);
 
   useEffect(() => {
     const isLandingView = supabaseEnabled && !session && !recoveryMode && !isNotFound && !publicReportToken && !publicAuthMode;
@@ -872,8 +922,8 @@ export default function App() {
               }
               setMfaRequired(false);
               setSession(nextSession);
-              if (typeof window !== 'undefined' && ['/login', '/entrar', '/cadastro'].includes(window.location.pathname)) {
-                window.history.replaceState({}, '', '/');
+              if (typeof window !== 'undefined' && ['/login', '/entrar', '/cadastro', '/'].includes(window.location.pathname)) {
+                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/painel');
               }
             }}
           />
@@ -891,7 +941,7 @@ export default function App() {
             onClose={() => {
               setLegalModalTab(null);
               if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
-                window.history.replaceState({}, '', '/');
+                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/painel');
               }
             }}
           />
@@ -950,7 +1000,7 @@ export default function App() {
     const { updated, nextList } = ReportService.saveDraftLocal(reportDraft);
     setReports(nextList);
     setSelectedOrder(null);
-    setActiveTab('reports');
+    navigateToTab('reports');
     setPendingReportToOpen(updated);
   };
 
@@ -1022,10 +1072,10 @@ export default function App() {
         onSelectTab={(tabId) => {
           if (tabId === 'profile') {
             setIsProfileModalOpen(true);
-          } else if (tabId === 'templates') {
+            } else if (tabId === 'templates') {
             setIsTemplatesModalOpen(true);
           } else {
-            setActiveTab(tabId);
+            navigateToTab(tabId);
           }
         }}
         openOrdersCount={openOrdersCount}
@@ -1036,7 +1086,7 @@ export default function App() {
         templatesCount={templates.length}
         userProfile={userProfile}
         onSignOut={supabaseEnabled ? handleSignOut : null}
-        onOpenLegalModal={(tab) => setLegalModalTab(tab)}
+        onOpenLegalModal={openLegalRoute}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         collapsed={sidebarCollapsed}
@@ -1063,7 +1113,7 @@ export default function App() {
             if (alert?.action === 'sync') {
               handleSyncNow();
             } else if (alert?.targetTab) {
-              setActiveTab(alert.targetTab);
+              navigateToTab(alert.targetTab);
             }
           }}
           theme={theme}
@@ -1093,7 +1143,7 @@ export default function App() {
                     setPreselectedUnitForNewOrder(null);
                     setIsNewOrderModalOpen(true);
                   }}
-                  onNavigateTab={setActiveTab}
+                  onNavigateTab={navigateToTab}
                   onOpenProfile={() => setIsProfileModalOpen(true)}
                 />
               )}
@@ -1152,7 +1202,7 @@ export default function App() {
                     setIsNewOrderModalOpen(true);
                   }}
                   onOpenOrder={(order) => setSelectedOrder(order)}
-                  onNavigateTab={setActiveTab}
+                  onNavigateTab={navigateToTab}
                 />
               )}
 
@@ -1170,7 +1220,7 @@ export default function App() {
                     const found = orders.find((o) => o.id === codeOrId || o.supabaseId === codeOrId);
                     if (found) setSelectedOrder(found);
                   }}
-                  onNavigateTab={setActiveTab}
+                  onNavigateTab={navigateToTab}
                   onSaveReport={async (rep) => {
                     const next = await ReportService.saveReport(rep);
                     setReports(next);
@@ -1275,10 +1325,10 @@ export default function App() {
             units={units}
             onSelectOrder={(ord) => setSelectedOrder(ord)}
             onSelectReport={(rep) => {
-              setActiveTab('reports');
+              navigateToTab('reports');
               setPendingReportToOpen(rep);
             }}
-            onNavigateTab={setActiveTab}
+            onNavigateTab={navigateToTab}
             onNewOrder={() => {
               setPreselectedUnitForNewOrder(null);
               setIsNewOrderModalOpen(true);
@@ -1294,7 +1344,7 @@ export default function App() {
             onClose={() => {
               setLegalModalTab(null);
               if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
-                window.history.replaceState({}, '', '/');
+                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/painel');
               }
             }}
           />
