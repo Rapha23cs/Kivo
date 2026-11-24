@@ -210,6 +210,13 @@ function buildChecklistDerivedPayload(order) {
   };
 }
 
+export function buildPublicReportUrl(publicToken) {
+  if (!publicToken) return '';
+  return typeof window !== 'undefined'
+    ? `${window.location.origin}/?laudo=${publicToken}`
+    : `/?laudo=${publicToken}`;
+}
+
 export const ReportService = {
   getReports() {
     return getStoredReports();
@@ -1067,10 +1074,7 @@ export const ReportService = {
     }
 
     await this.saveReport(updated);
-    const shareUrl =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}/laudo/${publicToken}`
-        : `/laudo/${publicToken}`;
+    const shareUrl = buildPublicReportUrl(publicToken);
 
     return { report: updated, shareUrl };
   },

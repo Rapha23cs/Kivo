@@ -50,11 +50,22 @@ function resolveInitialRoute() {
   }
   const path = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
   const searchParams = new URLSearchParams(window.location.search || '');
+  const laudoQueryToken = searchParams.get('laudo');
   const hasAuthCallback =
     window.location.hash.includes('access_token=') ||
     window.location.hash.includes('type=recovery') ||
     window.location.search.includes('code=') ||
     window.location.search.includes('error=');
+
+  if (laudoQueryToken) {
+    return {
+      initialTab: 'dashboard',
+      initialLegalTab: null,
+      initialNotFound: false,
+      initialAuthMode: null,
+      publicReportToken: laudoQueryToken.trim() || null
+    };
+  }
 
   if (path.startsWith('/laudo/')) {
     const token = path.slice('/laudo/'.length).split('/')[0] || '';

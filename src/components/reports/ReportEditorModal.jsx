@@ -50,7 +50,7 @@ import {
 } from '../../data/reportTemplateData';
 import { calculateTopicBreakdown, calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { getDisciplineMeta } from '../../data/workflowsConfig';
-import { ReportService } from '../../supabase/reportService';
+import { ReportService, buildPublicReportUrl } from '../../supabase/reportService';
 import {
   formatDateTimeWatermark,
   exportCsvRows,
@@ -477,7 +477,7 @@ export default function ReportEditorModal({
 
   const handleCopyPublicLink = async () => {
     if (!draft.publicToken) return;
-    const shareUrl = `${window.location.origin}/laudo/${draft.publicToken}`;
+    const shareUrl = buildPublicReportUrl(draft.publicToken);
     await copyTextToClipboard(shareUrl);
     toast.success({ title: 'Link público copiado!', message: shareUrl });
   };

@@ -19,6 +19,7 @@ import {
   calculateAdherenceLevel
 } from '../../data/reportTemplateData';
 import { calculateTopicBreakdown } from '../../data/emserhChecklistData';
+import { buildPublicReportUrl } from '../../supabase/reportService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import QrCodeSvg from '../common/QrCodeSvg';
 
@@ -611,9 +612,9 @@ export default function ReportPrintView({
               <div className="text-[10px] text-slate-500 font-mono space-y-0.5">
                 <p className="font-semibold text-slate-700">{reportMeta.shortTitle} • Gerado pelo sistema Kivo</p>
                 <p>Validação digital online disponível em:</p>
-                <p className="text-emerald-700 break-all">{`${window.location.origin}/laudo/${report.publicToken}`}</p>
+                <p className="text-emerald-700 break-all">{buildPublicReportUrl(report.publicToken)}</p>
               </div>
-              <QrCodeSvg value={`${window.location.origin}/laudo/${report.publicToken}`} size={68} />
+              <QrCodeSvg value={buildPublicReportUrl(report.publicToken)} size={68} />
             </div>
           ) : (
             <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 font-mono">
