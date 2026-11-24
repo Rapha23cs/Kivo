@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer, Building2, BarChart3, ShieldAlert } from 'lucide-react';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { getDisciplineMeta } from '../../data/workflowsConfig';
@@ -23,6 +24,14 @@ export default function ConsolidatedClientReportModal({
   const [selectedClient, setSelectedClient] = useState(availableClients[0] || '');
   const [disciplineFilter, setDisciplineFilter] = useState('ALL');
   const [periodMonth, setPeriodMonth] = useState(''); // '' = Todos ou 'YYYY-MM'
+
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return undefined;
+    document.body.classList.add('kivo-has-print-modal');
+    return () => {
+      document.body.classList.remove('kivo-has-print-modal');
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -124,9 +133,9 @@ export default function ConsolidatedClientReportModal({
     return list.sort((a, b) => (rank[b.classification] || 0) - (rank[a.classification] || 0)).slice(0, 12);
   }, [filteredOrders]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="bg-white text-slate-900 w-full max-w-5xl rounded-none sm:rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[100dvh] sm:max-h-[94dvh] flex flex-col">
+  const content = (
+    <div className="kivo-print-modal-root fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="kivo-print-modal-card bg-white text-slate-900 w-full max-w-5xl rounded-none sm:rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[100dvh] sm:max-h-[94dvh] flex flex-col">
         {/* Toolbar de Filtros + Impressão (oculta na impressão) */}
         <div className="no-print bg-[#111214] text-[#F4F4F5] px-4 sm:px-6 py-3.5 border-b border-[#1F2024] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -193,7 +202,7 @@ export default function ConsolidatedClientReportModal({
         </div>
 
         {/* Documento Consolidado */}
-        <div className="p-6 sm:p-10 overflow-y-auto space-y-8 bg-white print:p-4 text-xs">
+        <div className="kivo-print-scroll p-6 sm:p-10 overflow-y-auto space-y-8 bg-white print:p-4 text-xs">
           {/* Cabeçalho */}
           <div className="border-b-2 border-emerald-700 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">
@@ -330,4 +339,9 @@ export default function ConsolidatedClientReportModal({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+  return content;
 }

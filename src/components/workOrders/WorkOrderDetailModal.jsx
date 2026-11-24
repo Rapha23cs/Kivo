@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Calendar,
@@ -224,10 +225,22 @@ export default function WorkOrderDetailModal({
       }
     }
 
-    commitOrderUpdate({ ...currentOrder, status: 'completed' });
+    const completedOrder = {
+      ...currentOrder,
+      status: 'completed',
+      completedAt: new Date().toISOString()
+    };
+    commitOrderUpdate(completedOrder);
     toast.success({
       title: 'Vistoria concluída',
-      message: `${currentOrder.id} • Conformidade ${summary.percentualConformidade}%`
+      message: `${currentOrder.id} • Conformidade ${summary.percentualConformidade}%`,
+      duration: 8000,
+      action: onOpenTechnicalReport
+        ? {
+            label: linkedReport ? 'Continuar Relatório →' : 'Gerar Relatório →',
+            onClick: () => onOpenTechnicalReport(completedOrder)
+          }
+        : undefined
     });
   };
 
@@ -468,13 +481,13 @@ export default function WorkOrderDetailModal({
 
   const orderStatusMeta = getOrderStatusMeta(currentOrder.status);
 
-  return (
+  const modalContent = (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center p-0 sm:p-3 bg-black/85 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-3 bg-black/85 backdrop-blur-sm">
         <div className="bg-[#111214] border-0 sm:border sm:border-[#232429] w-full sm:w-[96vw] sm:max-w-[1440px] h-[100dvh] sm:h-[94dvh] rounded-none sm:rounded-xl shadow-2xl overflow-hidden flex flex-col transition-all">
 
           {/* HEADER PRINCIPAL COMPACTO */}
-          <div className="px-4 sm:px-5 py-3 border-b border-[#232429] bg-[#141518] flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
+          <div className="px-4 sm:px-5 py-3 border-b border-[#232429] bg-[#141518] flex flex-col xl:flex-row xl:items-center justify-between gap-3 shrink-0">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap shrink-0">
                 <span className="font-mono text-[11px] font-semibold text-[#F4F4F5] bg-[#1A1B20] px-2 py-0.5 rounded border border-[#27282E] flex items-center gap-1">
@@ -552,9 +565,10 @@ export default function WorkOrderDetailModal({
                 type="button"
                 onClick={() => setShowReportModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#1C1D22] text-[#F4F4F5] border border-[#2D2F36] hover:bg-[#25272E] rounded-lg transition"
+                title="Visualizar espelho bruto por temática do checklist"
               >
-                <FileText className="w-3.5 h-3.5 text-[#2EB88A]" />
-                <span className="hidden sm:inline">Emitir Laudo</span>
+                <FileText className="w-3.5 h-3.5 text-[#A1A1AA]" />
+                <span className="hidden sm:inline">Espelho Checklist</span>
               </button>
 
               <button
@@ -1581,6 +1595,26 @@ export default function WorkOrderDetailModal({
             </button>
           )}
 
+          {/* FAIXA DE TRANSIÇÃO PÓS-CHECKLIST (Quando concluída) */}
+          {currentOrder.status === 'completed' && onOpenTechnicalReport && (
+            <div className="px-4 py-2 bg-[#122620] border-t border-[#2EB88A]/30 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+              <div className="flex items-center gap-2 text-[#E4E4E7] min-w-0">
+                <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+                <span className="truncate">
+                  <strong className="text-[#34D399]">Checklist concluído</strong> • {summary.totalAvaliados} avaliados, {summary.desviosCount} desvio(s) e {lightboxImages.length} foto(s) prontos para importar no Relatório Técnico.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenTechnicalReport(currentOrder)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-semibold rounded-lg text-xs transition shrink-0"
+              >
+                <span>{linkedReport ? 'Continuar Relatório' : 'Avançar para Relatório'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* RODAPÉ DO MODAL */}
           <div className="px-3 sm:px-4 py-2.5 border-t border-[#1F2024] bg-[#111214] flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0 pb-safe">
             <div className="text-xs text-[#71717A] hidden sm:flex items-center gap-2">
@@ -1622,10 +1656,11 @@ export default function WorkOrderDetailModal({
               <button
                 type="button"
                 onClick={() => setShowReportModal(true)}
-                className="px-3.5 py-1.5 bg-[#1C1D22] hover:bg-[#23252C] text-[#F4F4F5] border border-[#2D2F36] rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+                className="px-3.5 py-1.5 bg-[#1C1D22] hover:bg-[#23252C] text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+                title="Espelho bruto de todos os itens e pontuações do checklist"
               >
-                <FileText className="w-3.5 h-3.5 text-[#34D399]" />
-                <span>Espelho PDF</span>
+                <FileText className="w-3.5 h-3.5 text-[#A1A1AA]" />
+                <span>Espelho Checklist</span>
               </button>
               <button
                 type="button"
@@ -1658,4 +1693,9 @@ export default function WorkOrderDetailModal({
       />
     </>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 }

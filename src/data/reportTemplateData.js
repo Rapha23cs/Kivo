@@ -109,6 +109,95 @@ export const PHOTO_SECTIONS = [
   'Emergência e Licenciamento'
 ];
 
+export const REPORT_DISCIPLINE_META = {
+  meio_ambiente: {
+    id: 'meio_ambiente',
+    title: 'RELATÓRIO DE INSPEÇÃO AMBIENTAL',
+    shortTitle: 'Relatório de Inspeção Ambiental',
+    documentSubtitle: 'Auditoria Técnica e Conformidade Ambiental',
+    ncLabel: 'Não Conformidades Ambientais',
+    occurrenceLabel: 'Ocorrências Ambientais',
+    defaultObjective:
+      'Avaliar o atendimento aos requisitos legais, controles operacionais e diretrizes de gestão ambiental na unidade.',
+    defaultManagement: 'Meio Ambiente / SMS',
+    adherenceTitle: 'Classificação do Nível de Aderência Ambiental',
+    adherenceShortTitle: 'Nível de Aderência Ambiental',
+    maturityTitle: 'Nível de Maturidade da Gestão Ambiental',
+    conclusionScope: 'ambiental',
+    conclusionManagementPhrase: 'gestão ambiental',
+    conclusionControlsPhrase: 'dos controles ambientais',
+    classificationLabels: {
+      'Desvio Pontual': 'Desvio Pontual',
+      'Não Conformidade Ambiental': 'Não Conformidade Ambiental',
+      'Ocorrência Ambiental': 'Ocorrência Ambiental',
+      'Notificação': 'Notificação',
+      'Interdição': 'Interdição'
+    }
+  },
+  seguranca_trabalho: {
+    id: 'seguranca_trabalho',
+    title: 'RELATÓRIO DE INSPEÇÃO DE SEGURANÇA DO TRABALHO',
+    shortTitle: 'Relatório de Inspeção SST',
+    documentSubtitle: 'Auditoria Técnica e Conformidade às Normas Regulamentadoras (SST)',
+    ncLabel: 'Não Conformidades SST',
+    occurrenceLabel: 'Ocorrências / Condições de Risco',
+    defaultObjective:
+      'Avaliar o atendimento às Normas Regulamentadoras (NRs), uso de EPIs, proteções coletivas e controles preventivos de Segurança do Trabalho na unidade.',
+    defaultManagement: 'Segurança do Trabalho / SESMT',
+    adherenceTitle: 'Classificação do Nível de Aderência em SST',
+    adherenceShortTitle: 'Nível de Aderência em SST',
+    maturityTitle: 'Nível de Maturidade em Segurança do Trabalho',
+    conclusionScope: 'de segurança do trabalho',
+    conclusionManagementPhrase: 'gestão de Segurança e Saúde no Trabalho (SST)',
+    conclusionControlsPhrase: 'dos controles preventivos de SST',
+    classificationLabels: {
+      'Desvio Pontual': 'Desvio Pontual',
+      'Não Conformidade Ambiental': 'Não Conformidade SST',
+      'Ocorrência Ambiental': 'Ocorrência / Condição Grave SST',
+      'Notificação': 'Notificação',
+      'Interdição': 'Interdição / Embargo'
+    }
+  }
+};
+
+export function getReportMetaByDiscipline(discipline = 'meio_ambiente') {
+  return REPORT_DISCIPLINE_META[discipline] || REPORT_DISCIPLINE_META.meio_ambiente;
+}
+
+export function formatDeviationClassLabel(classificacao, discipline = 'meio_ambiente') {
+  const meta = getReportMetaByDiscipline(discipline);
+  return meta.classificationLabels?.[classificacao] || classificacao || 'Desvio Pontual';
+}
+
+export function getPhotoSectionsForReport(report) {
+  const photos = report?.registrosFotograficos || [];
+  const dynamicSections = [];
+  const seen = new Set();
+
+  const isPureStandardEnv =
+    (report?.discipline || 'meio_ambiente') === 'meio_ambiente' &&
+    photos.some((p) => PHOTO_SECTIONS.includes(p.secao));
+
+  if (isPureStandardEnv) {
+    PHOTO_SECTIONS.forEach((sec) => {
+      if (photos.some((p) => p.secao === sec)) {
+        seen.add(sec);
+        dynamicSections.push(sec);
+      }
+    });
+  }
+
+  photos.forEach((p) => {
+    const sec = p?.secao || 'Registros Gerais';
+    if (!seen.has(sec)) {
+      seen.add(sec);
+      dynamicSections.push(sec);
+    }
+  });
+
+  return dynamicSections.length > 0 ? dynamicSections : PHOTO_SECTIONS;
+}
+
 // Mapeamento exato dos 63 itens do Checklist -> 56 slots fotográficos do Relatório
 export const CHECKLIST_TO_REPORT_PHOTO_SLOT = {
   1: 1,
@@ -306,12 +395,14 @@ export function summarizeDeviationsByClass(desvios = []) {
 
 // Gerador do texto estruturado de Conclusão (Modelo Slide 33, neutro/multi-cliente)
 export function buildDefaultConclusionText({
+  discipline = 'meio_ambiente',
   indiceConformidade = 0,
   nivelAderencia,
   nivelMaturidade = 'Em Desenvolvimento',
   pontosPositivos = '',
   sinteseDesvios = ''
 }) {
+  const meta = getReportMetaByDiscipline(discipline);
   const aderencia = nivelAderencia || calculateAdherenceLevel(indiceConformidade);
   const aderenciaCurta = aderencia.replace(' Aderência', '');
   const maturidadeTexto = (nivelMaturidade || 'Em Desenvolvimento').toLowerCase();
@@ -325,20 +416,22 @@ export function buildDefaultConclusionText({
     : 'Não foram registrados desvios críticos ou não conformidades impeditivas durante a inspeção.';
 
   return [
-    `Com base na inspeção ambiental realizada, verificou-se que a unidade apresenta nível de aderência ambiental classificado como ${aderenciaCurta} (Índice Geral de Conformidade de ${Number(indiceConformidade).toFixed(1).replace('.', ',')}%), considerando os controles operacionais observados, os requisitos legais aplicáveis, os registros avaliados e as evidências identificadas durante a inspeção.`,
-    `De forma geral, observou-se que os processos relacionados à gestão ambiental apresentam nível de maturidade ${maturidadeTexto}${positivosStr}.`,
+    `Com base na inspeção ${meta.conclusionScope} realizada, verificou-se que a unidade apresenta nível de aderência ${meta.conclusionScope} classificado como ${aderenciaCurta} (Índice Geral de Conformidade de ${Number(indiceConformidade).toFixed(1).replace('.', ',')}%), considerando os controles operacionais observados, os requisitos legais aplicáveis, os registros avaliados e as evidências identificadas durante a inspeção.`,
+    `De forma geral, observou-se que os processos relacionados à ${meta.conclusionManagementPhrase} apresentam nível de maturidade ${maturidadeTexto}${positivosStr}.`,
     desviosStr,
-    `Os desvios identificados demandam acompanhamento da unidade e da gestão responsável, visando o fortalecimento da aderência operacional, a melhoria contínua dos controles ambientais e a prevenção de reincidências.`
+    `Os desvios identificados demandam acompanhamento da unidade e da gestão responsável, visando o fortalecimento da aderência operacional, a melhoria contínua ${meta.conclusionControlsPhrase} e a prevenção de reincidências.`
   ].join('\n\n');
 }
 
-export function createBlankReport({ userProfile, hospitals = [] } = {}) {
+export function createBlankReport({ userProfile, hospitals = [], discipline = 'meio_ambiente' } = {}) {
   const firstHospital = hospitals[0] || {};
+  const meta = getReportMetaByDiscipline(discipline);
   const year = new Date().getFullYear();
   const suffix = `${Math.random().toString(36).slice(2, 5).toUpperCase()}${String(Date.now()).slice(-3)}`;
 
   return {
     id: `local-rel-${Date.now()}`,
+    discipline,
     codigoRelatorio: `RIA-${year}-${suffix}`,
     clienteNome: firstHospital.clientName || 'EMSERH',
     unidade: firstHospital.name || '',
@@ -346,9 +439,9 @@ export function createBlankReport({ userProfile, hospitals = [] } = {}) {
     cidade: firstHospital.municipio || 'São Luís',
     regional: firstHospital.regional || 'Regional Metropolitana',
     tipoInspecao: 'Programada',
-    objetivo: 'Avaliar o atendimento aos requisitos legais, controles operacionais e diretrizes de gestão ambiental na unidade.',
+    objetivo: meta.defaultObjective,
     responsavel: userProfile?.name || 'Auditor Técnico',
-    gerencia: 'Meio Ambiente / SMS',
+    gerencia: meta.defaultManagement,
     fachadaUrl: '',
 
     // 8 indicadores da Capa
@@ -364,13 +457,16 @@ export function createBlankReport({ userProfile, hospitals = [] } = {}) {
     // Desvios (Slides 3 e 4)
     desvios: [],
 
-    // Registros Fotográficos (56 pontos dos Slides 5 a 32)
-    registrosFotograficos: REPORT_PHOTO_SLOTS.map((slot) => ({
-      ...slot,
-      fotoUrl: '',
-      observacao: '',
-      incluirNoRelatorio: true
-    })),
+    // Registros Fotográficos (56 pontos dos Slides 5 a 32 para Meio Ambiente; dinâmico em SST/Templates)
+    registrosFotograficos:
+      discipline === 'seguranca_trabalho'
+        ? []
+        : REPORT_PHOTO_SLOTS.map((slot) => ({
+            ...slot,
+            fotoUrl: '',
+            observacao: '',
+            incluirNoRelatorio: true
+          })),
 
     // Conclusão (Slides 33 a 35)
     nivelAderencia: 'Baixa Aderência',

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Calendar,
   Plus,
@@ -282,9 +283,11 @@ export default function AgendaModule({
       )}
 
       {/* Modal Criar / Editar Agendamento */}
-      {editingSchedule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="bg-[#111214] border-0 sm:border sm:border-[#232429] w-full sm:max-w-lg h-[100dvh] sm:h-auto rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto">
+      {editingSchedule &&
+        (() => {
+          const modal = (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+              <div className="bg-[#111214] border-0 sm:border sm:border-[#232429] w-full sm:max-w-lg h-[100dvh] sm:h-auto sm:max-h-[90dvh] rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto">
             <div className="p-4 sm:p-5 border-b border-[#1F2024] bg-[#141518] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Calendar className="w-5 h-5 text-[#34D399]" />
@@ -436,7 +439,9 @@ export default function AgendaModule({
             </form>
           </div>
         </div>
-      )}
+          );
+          return typeof document !== 'undefined' && document.body ? createPortal(modal, document.body) : modal;
+        })()}
     </div>
   );
 }

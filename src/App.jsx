@@ -698,7 +698,7 @@ export default function App() {
       setSelectedOrder((prev) => (prev?.id === updatedOrder.id ? { ...prev, supabaseId: syncedId } : prev));
     });
     setOrders(updatedList);
-    setSelectedOrder(updatedOrder);
+    setSelectedOrder((prev) => (prev?.id === updatedOrder.id ? updatedOrder : prev));
   };
 
   const handleCreateOrder = (newOrderData) => {
@@ -927,6 +927,20 @@ export default function App() {
                 onSaveReport={async (rep) => {
                   const next = await ReportService.saveReport(rep);
                   setReports(next);
+                  if (rep?.status === 'finalizado') {
+                    const linkedOrder = orders.find(
+                      (o) =>
+                        (rep.inspecaoId && o.supabaseId === rep.inspecaoId) ||
+                        (rep.inspecaoCodigo && o.id === rep.inspecaoCodigo)
+                    );
+                    if (linkedOrder && linkedOrder.status !== 'completed') {
+                      handleUpdateOrder({
+                        ...linkedOrder,
+                        status: 'completed',
+                        completedAt: linkedOrder.completedAt || new Date().toISOString()
+                      });
+                    }
+                  }
                 }}
                 onLocalDraftUpdate={(nextList) => {
                   setReports(nextList);

@@ -2,8 +2,10 @@
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseConfig';
 import {
   REPORT_PHOTO_SLOTS,
+  PHOTO_SECTIONS,
   CHECKLIST_TO_REPORT_PHOTO_SLOT,
   mapTopicToPhotoSection,
+  getReportMetaByDiscipline,
   calculateAdherenceLevel,
   calculateConformityIndex,
   suggestMaturityLevel,
@@ -11,7 +13,7 @@ import {
   buildDefaultConclusionText,
   createBlankReport
 } from '../data/reportTemplateData';
-import { calculateInspectionSummary } from '../data/emserhChecklistData';
+import { calculateInspectionSummary, calculateTopicBreakdown } from '../data/emserhChecklistData';
 import {
   compressImageToDataUrl,
   uploadDataUrlToStorage,
@@ -45,26 +47,110 @@ function mapClassificationFromChecklist(item) {
   return 'Desvio Pontual';
 }
 
+function resolveOrderDateTime(order) {
+  if (order?.completedAt) {
+    const dt = new Date(order.completedAt);
+    if (!Number.isNaN(dt.getTime())) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    }
+  }
+  if (order?.scheduledDate) {
+    return `${String(order.scheduledDate).slice(0, 10)}T09:00`;
+  }
+  return new Date().toISOString().slice(0, 16);
+}
+
 function buildChecklistDerivedPayload(order) {
-  const summary = calculateInspectionSummary(order?.checklist || []);
   const checklist = order?.checklist || [];
+  const discipline = order?.discipline || 'meio_ambiente';
+  const isSst = discipline === 'seguranca_trabalho';
+  const summary = calculateInspectionSummary(checklist);
+  const topicBreakdownMap = calculateTopicBreakdown(checklist);
+  const desempenhoTematico = Object.values(topicBreakdownMap);
+
+  const usesStandard56Slots =
+    !isSst &&
+    !order?.templateId &&
+    (checklist.length === 0 || checklist.some((ci) => CHECKLIST_TO_REPORT_PHOTO_SLOT[Number(ci.number)]));
+
+  // Mapear evidências do checklist para slots fotográficos
+  const slotMatchByOrder = new Map();
+  const extraChecklistPhotos = [];
+  const dynamicPhotoSlots = [];
+  const itemNumToSlotOrder = new Map();
+
+  if (usesStandard56Slots) {
+    let nextExtraVirtualOrder = REPORT_PHOTO_SLOTS.length;
+    checklist.forEach((ci) => {
+      if (!ci?.evidenceUrl) return;
+      const itemNum = Number(ci.number);
+      const targetSlotOrder = CHECKLIST_TO_REPORT_PHOTO_SLOT[itemNum];
+      if (targetSlotOrder && !slotMatchByOrder.has(targetSlotOrder)) {
+        slotMatchByOrder.set(targetSlotOrder, ci);
+        itemNumToSlotOrder.set(itemNum, targetSlotOrder);
+      } else {
+        nextExtraVirtualOrder += 1;
+        itemNumToSlotOrder.set(itemNum, nextExtraVirtualOrder);
+        extraChecklistPhotos.push({
+          checklistItemNumber: itemNum,
+          secao: mapTopicToPhotoSection(ci.topic),
+          legenda: `Item #${itemNum || 'Extra'} — ${ci.question || ci.topic || 'Registro do Checklist'}`,
+          fotoUrl: ci.evidenceUrl,
+          observacao: ci.observation || '',
+          incluirNoRelatorio: true
+        });
+      }
+    });
+  } else {
+    let seq = 0;
+    checklist.forEach((ci) => {
+      const hasPhoto = Boolean(ci?.evidenceUrl);
+      const isDeviation = ci?.status === 'nao' || ci?.status === 'nao_conforme';
+      if (!hasPhoto && !isDeviation) return;
+      seq += 1;
+      const itemNum = Number(ci.number) || seq;
+      itemNumToSlotOrder.set(itemNum, seq);
+      dynamicPhotoSlots.push({
+        ordem: seq,
+        checklistItemNumber: itemNum,
+        secao: ci.topic || ci.nrCode || (isSst ? 'Registros SST' : 'Registros Gerais'),
+        legenda: `Item #${itemNum} — ${ci.question || ci.topic || 'Registro da Vistoria'}`,
+        fotoUrl: ci.evidenceUrl || '',
+        observacao: ci.observation || '',
+        incluirNoRelatorio: true
+      });
+    });
+  }
 
   const desvios = summary.desvios.map((item, idx) => {
     const classificacao = mapClassificationFromChecklist(item);
     const num = item.number || idx + 1;
+    const defaultTratativa =
+      classificacao === 'Não Conformidade Ambiental'
+        ? isSst
+          ? 'Registro e Tratativa de Não Conformidade SST / Plano de Ação Imediato'
+          : 'Registro e Tratativa de Não Conformidade Ambiental'
+        : 'Plano de Ação Corretiva';
+    const resolvedTratativa = item.resolutionNote?.trim()
+      ? `${defaultTratativa} — ${item.resolutionNote.trim()}`
+      : defaultTratativa;
+
     return {
       numero: idx + 1,
       checklistItemNumber: num,
+      tematica: item.topic || 'Geral',
+      nrCode: item.nrCode || '',
       descricao: `Item #${num} (${item.topic || 'Geral'}): ${item.observation || item.question}`,
       classificacao,
       severidadeNc: item.classification === 'Crítico' ? 'Maior' : item.classification === 'Grave' ? 'Menor' : '',
-      tratativa:
-        classificacao === 'Não Conformidade Ambiental'
-          ? 'Registro e Tratativa de Não Conformidade Ambiental'
-          : 'Plano de Ação Corretiva',
+      tratativa: resolvedTratativa,
       responsavel: item.responsible || 'Responsável da Unidade',
       prazo: item.deadline || '',
-      status: 'Em Aberto'
+      status: item.actionStatus || 'Em Aberto',
+      evidenciaFotoUrl: item.evidenceUrl || '',
+      depoisFotoUrl: item.afterPhotoUrl || '',
+      fotoSlotOrdem: itemNumToSlotOrder.get(Number(num)) || null
     };
   });
 
@@ -73,51 +159,43 @@ function buildChecklistDerivedPayload(order) {
   const nivelAderencia = calculateAdherenceLevel(indiceConformidade);
   const nivelMaturidade = suggestMaturityLevel(desvios);
 
-  const positivosTopics = Array.from(
-    new Set(
-      checklist
-        .filter((i) => i.status === 'sim' || i.status === 'conforme')
-        .map((i) => i.topic)
-        .filter(Boolean)
-    )
-  ).slice(0, 4);
+  const perfectTopics = desempenhoTematico
+    .filter((t) => t.sim > 0 && t.nao === 0)
+    .map((t) => `${t.topic} (100% conforme)`);
+  const fallbackCompliantTopics = desempenhoTematico
+    .filter((t) => t.sim > 0)
+    .sort((a, b) => b.percent - a.percent)
+    .slice(0, 4)
+    .map((t) => `${t.topic} (${t.percent}% conforme)`);
+  const chosenPositives = (perfectTopics.length > 0 ? perfectTopics : fallbackCompliantTopics).slice(0, 4);
 
-  const desviosTopics = Array.from(
-    new Set(summary.desvios.map((i) => i.topic).filter(Boolean))
-  );
-
-  const pontosPositivos = positivosTopics.length > 0
-    ? `os controles conformes verificados em ${positivosTopics.join(', ')}`
+  const pontosPositivos = chosenPositives.length > 0
+    ? `os controles conformes verificados em ${chosenPositives.join(', ')}`
     : '';
 
-  const sinteseDesvios = desviosTopics.length > 0
-    ? desviosTopics.join(', ')
-    : '';
-
-  // Mapear evidências do checklist usando o mapa exato Item -> Slot (1..56) e enviando os demais para extras
-  const slotMatchByOrder = new Map();
-  const extraChecklistPhotos = [];
-
-  checklist.forEach((ci) => {
-    if (!ci?.evidenceUrl) return;
-    const itemNum = Number(ci.number);
-    const targetSlotOrder = CHECKLIST_TO_REPORT_PHOTO_SLOT[itemNum];
-    if (targetSlotOrder && !slotMatchByOrder.has(targetSlotOrder)) {
-      slotMatchByOrder.set(targetSlotOrder, ci);
-    } else {
-      extraChecklistPhotos.push({
-        checklistItemNumber: itemNum,
-        secao: mapTopicToPhotoSection(ci.topic),
-        legenda: `Item #${itemNum || 'Extra'} — ${ci.question || ci.topic || 'Registro do Checklist'}`,
-        fotoUrl: ci.evidenceUrl,
-        observacao: ci.observation || '',
-        incluirNoRelatorio: true
-      });
-    }
+  // Agrupar desvios por temática com síntese real no formato do Slide 33
+  const deviationsByTopic = new Map();
+  summary.desvios.forEach((d) => {
+    const t = d.topic || 'Geral';
+    if (!deviationsByTopic.has(t)) deviationsByTopic.set(t, []);
+    deviationsByTopic.get(t).push(d);
   });
+  const desviosSummaryParts = Array.from(deviationsByTopic.entries())
+    .slice(0, 5)
+    .map(([topicName, list]) => {
+      const sample = list[0];
+      const snippet = (sample.observation || sample.question || '').trim().slice(0, 55);
+      return snippet ? `${topicName} (${list.length}x, ex.: ${snippet})` : `${topicName} (${list.length})`;
+    });
+  const sinteseDesvios = desviosSummaryParts.join('; ');
+
+  const totalChecklistPhotos = checklist.filter((ci) => Boolean(ci?.evidenceUrl)).length;
 
   return {
+    discipline,
+    usesStandard56Slots,
     summary,
+    desempenhoTematico,
     desvios,
     classCounts,
     indiceConformidade,
@@ -126,7 +204,9 @@ function buildChecklistDerivedPayload(order) {
     pontosPositivos,
     sinteseDesvios,
     slotMatchByOrder,
-    extraChecklistPhotos
+    extraChecklistPhotos,
+    dynamicPhotoSlots,
+    totalChecklistPhotos
   };
 }
 
@@ -142,51 +222,67 @@ export const ReportService = {
 
   buildFromOrder(order, userProfile) {
     const derived = buildChecklistDerivedPayload(order);
+    const meta = getReportMetaByDiscipline(derived.discipline);
 
-    const baseSlots = REPORT_PHOTO_SLOTS.map((slot) => {
-      const matched = derived.slotMatchByOrder.get(slot.ordem);
-      return {
-        ...slot,
-        fotoUrl: matched?.evidenceUrl || '',
-        observacao: matched?.observation || '',
-        incluirNoRelatorio: true
-      };
-    });
+    let registrosFotograficos = [];
+    if (derived.usesStandard56Slots) {
+      const baseSlots = REPORT_PHOTO_SLOTS.map((slot) => {
+        const matched = derived.slotMatchByOrder.get(slot.ordem);
+        return {
+          ...slot,
+          fotoUrl: matched?.evidenceUrl || '',
+          observacao: matched?.observation || '',
+          incluirNoRelatorio: true
+        };
+      });
 
-    const extraSlots = derived.extraChecklistPhotos.map((extra, idx) => ({
-      ...extra,
-      ordem: REPORT_PHOTO_SLOTS.length + idx + 1
-    }));
+      const extraSlots = derived.extraChecklistPhotos.map((extra, idx) => ({
+        ...extra,
+        ordem: REPORT_PHOTO_SLOTS.length + idx + 1
+      }));
+      registrosFotograficos = [...baseSlots, ...extraSlots];
+    } else {
+      registrosFotograficos = derived.dynamicPhotoSlots;
+    }
 
-    const base = createBlankReport({ userProfile });
+    const base = createBlankReport({ userProfile, discipline: derived.discipline });
     const year = new Date().getFullYear();
     const cleanOrderId = String(order.id || 'OS').replace(/[^A-Za-z0-9-]/g, '');
 
     return {
       ...base,
-      discipline: order.discipline || 'meio_ambiente',
+      discipline: derived.discipline,
       codigoRelatorio: `REL-${cleanOrderId}-${year}-${String(Date.now()).slice(-3)}`,
       clienteNome: order.clientName || 'Cliente',
       unidade: order.hospitalName || '',
-      dataHora: `${order.scheduledDate || new Date().toISOString().split('T')[0]}T09:00`,
+      dataHora: resolveOrderDateTime(order),
       cidade: order.municipio || '',
       regional: order.regional || '',
       tipoInspecao: order.inspectionType || 'Programada',
+      objetivo: order.templateName
+        ? `${meta.defaultObjective} (Escopo: ${order.templateName})`
+        : meta.defaultObjective,
       responsavel: order.technicianName || userProfile?.name || 'Auditor Técnico',
+      gerencia: meta.defaultManagement,
       unidadeId: order.unidadeId || null,
       inspecaoId: order.supabaseId || null,
       inspecaoCodigo: order.id || '',
       itensAvaliados: derived.summary.totalAvaliados,
       conformidades: derived.summary.totalSim,
+      itensNaoAplicaveis: derived.summary.totalNA,
+      itensPendentes: Math.max(0, derived.summary.totalGeral - derived.summary.totalAvaliados - derived.summary.totalNA),
+      desempenhoTematico: derived.desempenhoTematico,
+      fotosImportadasChecklist: derived.totalChecklistPhotos,
       ...derived.classCounts,
       indiceConformidade: derived.indiceConformidade,
       desvios: derived.desvios,
-      registrosFotograficos: [...baseSlots, ...extraSlots],
+      registrosFotograficos,
       nivelAderencia: derived.nivelAderencia,
       nivelMaturidade: derived.nivelMaturidade,
       pontosPositivos: derived.pontosPositivos,
       sinteseDesvios: derived.sinteseDesvios,
       conclusaoTexto: buildDefaultConclusionText({
+        discipline: derived.discipline,
         indiceConformidade: derived.indiceConformidade,
         nivelAderencia: derived.nivelAderencia,
         nivelMaturidade: derived.nivelMaturidade,
@@ -217,8 +313,10 @@ export const ReportService = {
       if (!prev) return d;
       return {
         ...d,
-        status: prev.status || d.status,
-        tratativa: prev.tratativa || d.tratativa,
+        classificacao: prev.classificacao || d.classificacao,
+        severidadeNc: prev.severidadeNc || d.severidadeNc,
+        status: d.status !== 'Em Aberto' ? d.status : prev.status || d.status,
+        tratativa: prev.tratativa && prev.tratativa.length > d.tratativa.length ? prev.tratativa : d.tratativa,
         responsavel: d.responsavel || prev.responsavel,
         prazo: d.prazo || prev.prazo
       };
@@ -234,39 +332,69 @@ export const ReportService = {
 
     // Mesclar fotos: atualiza slots com foto do checklist sem apagar fotos já enviadas diretamente no relatório
     const currentPhotos = existingReport.registrosFotograficos || [];
-    const currentByOrder = new Map(currentPhotos.map((p) => [p.ordem, p]));
+    let nextRegistrosFotograficos = [];
 
-    const updatedBaseSlots = REPORT_PHOTO_SLOTS.map((slot) => {
-      const existingSlot = currentByOrder.get(slot.ordem) || { ...slot, fotoUrl: '', observacao: '', incluirNoRelatorio: true };
-      const matched = derived.slotMatchByOrder.get(slot.ordem);
-      if (!matched) return existingSlot;
-      return {
-        ...existingSlot,
-        fotoUrl: matched.evidenceUrl || existingSlot.fotoUrl,
-        observacao: matched.observation || existingSlot.observacao,
-        incluirNoRelatorio: existingSlot.incluirNoRelatorio ?? true
-      };
-    });
+    if (derived.usesStandard56Slots) {
+      const currentByOrder = new Map(currentPhotos.map((p) => [p.ordem, p]));
 
-    const existingExtras = currentPhotos.filter((p) => p.ordem > REPORT_PHOTO_SLOTS.length);
-    const existingExtraUrls = new Set(existingExtras.map((e) => e.fotoUrl).filter(Boolean));
-    let nextExtraOrder = Math.max(REPORT_PHOTO_SLOTS.length, ...existingExtras.map((e) => e.ordem));
-    const newExtras = derived.extraChecklistPhotos
-      .filter((ex) => ex.fotoUrl && !existingExtraUrls.has(ex.fotoUrl))
-      .map((ex) => {
-        nextExtraOrder += 1;
-        return { ...ex, ordem: nextExtraOrder };
+      const updatedBaseSlots = REPORT_PHOTO_SLOTS.map((slot) => {
+        const existingSlot = currentByOrder.get(slot.ordem) || { ...slot, fotoUrl: '', observacao: '', incluirNoRelatorio: true };
+        const matched = derived.slotMatchByOrder.get(slot.ordem);
+        if (!matched) return existingSlot;
+        return {
+          ...existingSlot,
+          fotoUrl: matched.evidenceUrl || existingSlot.fotoUrl,
+          observacao: matched.observation || existingSlot.observacao,
+          incluirNoRelatorio: existingSlot.incluirNoRelatorio ?? true
+        };
       });
+
+      const existingExtras = currentPhotos.filter((p) => p.ordem > REPORT_PHOTO_SLOTS.length);
+      const existingExtraUrls = new Set(existingExtras.map((e) => e.fotoUrl).filter(Boolean));
+      let nextExtraOrder = Math.max(REPORT_PHOTO_SLOTS.length, ...existingExtras.map((e) => e.ordem));
+      const newExtras = derived.extraChecklistPhotos
+        .filter((ex) => ex.fotoUrl && !existingExtraUrls.has(ex.fotoUrl))
+        .map((ex) => {
+          nextExtraOrder += 1;
+          return { ...ex, ordem: nextExtraOrder };
+        });
+
+      nextRegistrosFotograficos = [...updatedBaseSlots, ...existingExtras, ...newExtras];
+    } else {
+      const currentByItemNum = new Map(
+        currentPhotos
+          .filter((p) => p.checklistItemNumber)
+          .map((p) => [Number(p.checklistItemNumber), p])
+      );
+      const syncedDynamic = derived.dynamicPhotoSlots.map((slot) => {
+        const prev = currentByItemNum.get(Number(slot.checklistItemNumber));
+        if (!prev) return slot;
+        return {
+          ...slot,
+          fotoUrl: slot.fotoUrl || prev.fotoUrl || '',
+          observacao: slot.observacao || prev.observacao || '',
+          incluirNoRelatorio: prev.incluirNoRelatorio ?? true
+        };
+      });
+      const manualExtraDynamic = currentPhotos.filter((p) => !p.checklistItemNumber && p.fotoUrl);
+      let nextOrd = syncedDynamic.length;
+      const renumberedManuals = manualExtraDynamic.map((m) => {
+        nextOrd += 1;
+        return { ...m, ordem: nextOrd };
+      });
+      nextRegistrosFotograficos = [...syncedDynamic, ...renumberedManuals];
+    }
 
     const isAutoConclusion =
       !existingReport.conclusaoTexto?.trim() ||
-      existingReport.conclusaoTexto.startsWith('Com base na inspeção ambiental realizada,');
+      existingReport.conclusaoTexto.startsWith('Com base na inspeção ');
 
     return {
       ...existingReport,
-      discipline: order.discipline || existingReport.discipline || 'meio_ambiente',
+      discipline: derived.discipline,
       clienteNome: order.clientName || existingReport.clienteNome,
       unidade: order.hospitalName || existingReport.unidade,
+      dataHora: existingReport.dataHora || resolveOrderDateTime(order),
       cidade: order.municipio || existingReport.cidade,
       regional: order.regional || existingReport.regional,
       tipoInspecao: order.inspectionType || existingReport.tipoInspecao,
@@ -276,16 +404,21 @@ export const ReportService = {
       inspecaoCodigo: order.id || existingReport.inspecaoCodigo || '',
       itensAvaliados: derived.summary.totalAvaliados,
       conformidades: derived.summary.totalSim,
+      itensNaoAplicaveis: derived.summary.totalNA,
+      itensPendentes: Math.max(0, derived.summary.totalGeral - derived.summary.totalAvaliados - derived.summary.totalNA),
+      desempenhoTematico: derived.desempenhoTematico,
+      fotosImportadasChecklist: derived.totalChecklistPhotos,
       ...mergedCounts,
       indiceConformidade: derived.indiceConformidade,
       nivelAderencia: derived.nivelAderencia,
       nivelMaturidade: mergedMaturity,
       desvios: mergedDesvios,
-      registrosFotograficos: [...updatedBaseSlots, ...existingExtras, ...newExtras],
+      registrosFotograficos: nextRegistrosFotograficos,
       pontosPositivos: derived.pontosPositivos || existingReport.pontosPositivos,
       sinteseDesvios: derived.sinteseDesvios || existingReport.sinteseDesvios,
       conclusaoTexto: isAutoConclusion
         ? buildDefaultConclusionText({
+            discipline: derived.discipline,
             indiceConformidade: derived.indiceConformidade,
             nivelAderencia: derived.nivelAderencia,
             nivelMaturidade: mergedMaturity,
@@ -540,31 +673,51 @@ export const ReportService = {
 
     const mapped = (data || []).map((row) => {
       const savedPhotos = row.relatorio_registros_fotograficos || [];
-      const photoByOrder = new Map(savedPhotos.map((p) => [p.ordem, p]));
+      const rowDiscipline = row.disciplina || 'meio_ambiente';
+      const usesDynamicPhotos =
+        rowDiscipline === 'seguranca_trabalho' ||
+        (savedPhotos.length > 0 && savedPhotos.some((p) => !PHOTO_SECTIONS.includes(p.secao)));
 
-      const baseSlots = REPORT_PHOTO_SLOTS.map((slot) => {
-        const found = photoByOrder.get(slot.ordem);
-        return {
-          ordem: slot.ordem,
-          secao: found?.secao || slot.secao,
-          legenda: found?.legenda || slot.legenda,
-          fotoUrl: found?.foto_url || '',
-          observacao: found?.observacao || '',
-          incluirNoRelatorio: found?.incluir_no_relatorio ?? true
-        };
-      });
+      let loadedPhotos = [];
+      if (usesDynamicPhotos) {
+        loadedPhotos = [...savedPhotos]
+          .sort((a, b) => a.ordem - b.ordem)
+          .map((p) => ({
+            ordem: p.ordem,
+            secao: p.secao,
+            legenda: p.legenda,
+            fotoUrl: p.foto_url || '',
+            observacao: p.observacao || '',
+            incluirNoRelatorio: p.incluir_no_relatorio ?? true
+          }));
+      } else {
+        const photoByOrder = new Map(savedPhotos.map((p) => [p.ordem, p]));
 
-      const extras = savedPhotos
-        .filter((p) => p.ordem > REPORT_PHOTO_SLOTS.length)
-        .sort((a, b) => a.ordem - b.ordem)
-        .map((p) => ({
-          ordem: p.ordem,
-          secao: p.secao,
-          legenda: p.legenda,
-          fotoUrl: p.foto_url || '',
-          observacao: p.observacao || '',
-          incluirNoRelatorio: p.incluir_no_relatorio ?? true
-        }));
+        const baseSlots = REPORT_PHOTO_SLOTS.map((slot) => {
+          const found = photoByOrder.get(slot.ordem);
+          return {
+            ordem: slot.ordem,
+            secao: found?.secao || slot.secao,
+            legenda: found?.legenda || slot.legenda,
+            fotoUrl: found?.foto_url || '',
+            observacao: found?.observacao || '',
+            incluirNoRelatorio: found?.incluir_no_relatorio ?? true
+          };
+        });
+
+        const extras = savedPhotos
+          .filter((p) => p.ordem > REPORT_PHOTO_SLOTS.length)
+          .sort((a, b) => a.ordem - b.ordem)
+          .map((p) => ({
+            ordem: p.ordem,
+            secao: p.secao,
+            legenda: p.legenda,
+            fotoUrl: p.foto_url || '',
+            observacao: p.observacao || '',
+            incluirNoRelatorio: p.incluir_no_relatorio ?? true
+          }));
+        loadedPhotos = [...baseSlots, ...extras];
+      }
 
       return {
         id: row.id,
@@ -594,7 +747,7 @@ export const ReportService = {
         sinteseDesvios: row.sintese_desvios || '',
         conclusaoTexto: row.conclusao_texto || '',
         status: row.status || 'rascunho',
-        discipline: row.disciplina || 'meio_ambiente',
+        discipline: rowDiscipline,
         unidadeId: row.unidade_id || null,
         inspecaoId: row.inspecao_id || null,
         inspecaoCodigo: row.inspecoes?.codigo_kivo || '',
@@ -613,7 +766,7 @@ export const ReportService = {
             prazo: d.prazo || '',
             status: d.status || 'Em Aberto'
           })),
-        registrosFotograficos: [...baseSlots, ...extras],
+        registrosFotograficos: loadedPhotos,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       };
@@ -755,7 +908,13 @@ export const ReportService = {
       }));
 
     const fotosPayload = (report.registrosFotograficos || [])
-      .filter((f) => f.fotoUrl || f.observacao?.trim() || f.ordem > REPORT_PHOTO_SLOTS.length)
+      .filter(
+        (f) =>
+          f.fotoUrl ||
+          f.observacao?.trim() ||
+          f.ordem > REPORT_PHOTO_SLOTS.length ||
+          report.discipline === 'seguranca_trabalho'
+      )
       .map((f) => ({
         ordem: f.ordem,
         secao: f.secao,

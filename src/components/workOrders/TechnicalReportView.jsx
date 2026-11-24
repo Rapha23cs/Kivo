@@ -1,9 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer, FileText } from 'lucide-react';
 import { calculateInspectionSummary, calculateTopicBreakdown, EMSERH_TOPICS } from '../../data/emserhChecklistData';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function TechnicalReportView({ order, userProfile, onClose }) {
+  useEffect(() => {
+    if (!order || typeof document === 'undefined') return undefined;
+    document.body.classList.add('kivo-has-print-modal');
+    return () => {
+      document.body.classList.remove('kivo-has-print-modal');
+    };
+  }, [order]);
+
   if (!order) return null;
 
   const handlePrint = () => {
@@ -14,9 +23,9 @@ export default function TechnicalReportView({ order, userProfile, onClose }) {
   const topicBreakdown = calculateTopicBreakdown(order.checklist || []);
   const reportCode = `RIA-${order.id}-${new Date(order.createdAt || Date.now()).getFullYear()}`;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="bg-white text-slate-900 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col">
+  const content = (
+    <div className="kivo-print-modal-root fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="kivo-print-modal-card bg-white text-slate-900 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col">
         {/* Top Control Bar (Hidden when printing) */}
         <div className="no-print bg-[#111214] text-[#F4F4F5] px-6 py-3.5 flex items-center justify-between border-b border-[#1F2024]">
           <div className="flex items-center gap-2.5">
@@ -46,7 +55,7 @@ export default function TechnicalReportView({ order, userProfile, onClose }) {
         </div>
 
         {/* Printable Official Document Body */}
-        <div className="p-8 sm:p-12 overflow-y-auto space-y-6 text-sm bg-white print:p-0">
+        <div className="kivo-print-scroll p-8 sm:p-12 overflow-y-auto space-y-6 text-sm bg-white print:p-0">
           {/* Header Institucional Kivo / Cliente */}
           <div className="border-b-2 border-emerald-700 pb-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -275,4 +284,9 @@ export default function TechnicalReportView({ order, userProfile, onClose }) {
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+  return content;
 }

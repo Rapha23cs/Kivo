@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Save,
@@ -21,7 +22,10 @@ import {
   Download,
   Share2,
   Globe,
-  ExternalLink
+  ExternalLink,
+  ArrowRight,
+  ArrowLeft,
+  Layers
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -35,12 +39,17 @@ import {
   ADHERENCE_RULES,
   PHOTO_SECTIONS,
   CHECKLIST_TO_REPORT_PHOTO_SLOT,
+  getReportMetaByDiscipline,
+  formatDeviationClassLabel,
+  getPhotoSectionsForReport,
   calculateAdherenceLevel,
   calculateConformityIndex,
   suggestMaturityLevel,
   summarizeDeviationsByClass,
   buildDefaultConclusionText
 } from '../../data/reportTemplateData';
+import { calculateTopicBreakdown, calculateInspectionSummary } from '../../data/emserhChecklistData';
+import { getDisciplineMeta } from '../../data/workflowsConfig';
 import { ReportService } from '../../supabase/reportService';
 import {
   formatDateTimeWatermark,
@@ -80,8 +89,11 @@ export default function ReportEditorModal({
   const initialResume = getInitialResume();
   const [draft, setDraft] = useState(report);
   const [activeTab, setActiveTab] = useState(initialResume.activeTab || 'cover'); // cover | deviations | photos | conclusion
+  const initialSections = getPhotoSectionsForReport(report);
   const [selectedPhotoSection, setSelectedPhotoSection] = useState(
-    initialResume.selectedPhotoSection || PHOTO_SECTIONS[0]
+    initialResume.selectedPhotoSection && initialSections.includes(initialResume.selectedPhotoSection)
+      ? initialResume.selectedPhotoSection
+      : initialSections[0]
   );
   const [showOnlyWithPhotos, setShowOnlyWithPhotos] = useState(false);
   const [showTable01Rules, setShowTable01Rules] = useState(false);
@@ -111,8 +123,13 @@ export default function ReportEditorModal({
       debounceTimerRef.current = null;
     }
     const resumed = getInitialResume();
+    const nextSections = getPhotoSectionsForReport(report);
     if (resumed.activeTab) setActiveTab(resumed.activeTab);
-    if (resumed.selectedPhotoSection) setSelectedPhotoSection(resumed.selectedPhotoSection);
+    if (resumed.selectedPhotoSection && nextSections.includes(resumed.selectedPhotoSection)) {
+      setSelectedPhotoSection(resumed.selectedPhotoSection);
+    } else if (nextSections[0]) {
+      setSelectedPhotoSection(nextSections[0]);
+    }
   }, [report?.codigoRelatorio, report?.id]);
 
   useEffect(() => {
@@ -328,7 +345,7 @@ export default function ReportEditorModal({
         ...(prev.registrosFotograficos || []),
         {
           ordem: maxOrder + 1,
-          secao: selectedPhotoSection,
+          secao: activePhotoSection,
           legenda: 'Registro fotográfico complementar da inspeção',
           fotoUrl: '',
           observacao: '',
@@ -340,6 +357,7 @@ export default function ReportEditorModal({
 
   const handleGenerateConclusion = () => {
     const text = buildDefaultConclusionText({
+      discipline: draft.discipline || linkedOrder?.discipline || 'meio_ambiente',
       indiceConformidade: draft.indiceConformidade,
       nivelAderencia: draft.nivelAderencia,
       nivelMaturidade: draft.nivelMaturidade,
@@ -392,7 +410,12 @@ export default function ReportEditorModal({
       setDraft(payload);
       setAutoSaveState('saved');
       toast.success({
-        title: payload.status === 'finalizado' ? 'Relatório finalizado' : 'Rascunho salvo',
+        title:
+          payload.status === 'finalizado'
+            ? linkedOrder
+              ? 'Relatório e vistoria concluídos'
+              : 'Relatório finalizado'
+            : 'Rascunho salvo',
         message: `${payload.codigoRelatorio}${payload.unidade ? ` • ${payload.unidade}` : ''}`
       });
     } finally {
@@ -495,19 +518,50 @@ export default function ReportEditorModal({
     onClose();
   };
 
+  const effectiveDiscipline = draft.discipline || linkedOrder?.discipline || 'meio_ambiente';
+  const reportMeta = getReportMetaByDiscipline(effectiveDiscipline);
+  const disciplineMeta = getDisciplineMeta(effectiveDiscipline);
+
   const photos = draft.registrosFotograficos || [];
+  const photoSections = React.useMemo(() => getPhotoSectionsForReport(draft), [draft]);
+  const activePhotoSection = photoSections.includes(selectedPhotoSection)
+    ? selectedPhotoSection
+    : photoSections[0] || PHOTO_SECTIONS[0];
+
   const attachedCount = photos.filter((f) => Boolean(f.fotoUrl)).length;
   const filteredPhotos = photos.filter((f) => {
-    const matchSec = f.secao === selectedPhotoSection;
+    const matchSec = f.secao === activePhotoSection;
     const matchFilled = !showOnlyWithPhotos || Boolean(f.fotoUrl);
     return matchSec && matchFilled;
   });
+
+  const topicBreakdown = React.useMemo(() => {
+    if (Array.isArray(draft.desempenhoTematico) && draft.desempenhoTematico.length > 0) {
+      return draft.desempenhoTematico;
+    }
+    if (linkedOrder?.checklist?.length) {
+      return Object.values(calculateTopicBreakdown(linkedOrder.checklist));
+    }
+    return [];
+  }, [draft.desempenhoTematico, linkedOrder]);
+
+  const linkedSummary = React.useMemo(() => {
+    return linkedOrder?.checklist?.length ? calculateInspectionSummary(linkedOrder.checklist) : null;
+  }, [linkedOrder]);
 
   const aderenciaAtual = draft.nivelAderencia || calculateAdherenceLevel(draft.indiceConformidade);
 
   // Slots ligados a itens marcados como 'Não' no checklist vinculado (H1)
   const deviationSlotOrders = React.useMemo(() => {
     const set = new Set();
+    photos.forEach((p) => {
+      if (p.checklistItemNumber) {
+        const matchedDev = (draft.desvios || []).some(
+          (d) => Number(d.checklistItemNumber) === Number(p.checklistItemNumber)
+        );
+        if (matchedDev) set.add(p.ordem);
+      }
+    });
     (linkedOrder?.checklist || []).forEach((it) => {
       if (it.status === 'nao' || it.status === 'nao_conforme') {
         const slot = CHECKLIST_TO_REPORT_PHOTO_SLOT[Number(it.number)];
@@ -515,7 +569,18 @@ export default function ReportEditorModal({
       }
     });
     return set;
-  }, [linkedOrder]);
+  }, [linkedOrder, photos, draft.desvios]);
+
+  const jumpToPhotoSlot = (slotOrdem) => {
+    const found = photos.find((p) => Number(p.ordem) === Number(slotOrdem));
+    if (found?.secao) {
+      setSelectedPhotoSection(found.secao);
+    }
+    setActiveTab('photos');
+  };
+
+  const STEP_TABS = ['cover', 'deviations', 'photos', 'conclusion'];
+  const currentStepIdx = Math.max(0, STEP_TABS.indexOf(activeTab));
 
   const lightboxImages = React.useMemo(() => {
     const imgs = [];
@@ -546,37 +611,52 @@ export default function ReportEditorModal({
     if (idx >= 0) setLightboxIndex(idx);
   };
 
-  return (
+  const modalContent = (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center p-0 sm:p-3 bg-black/85 backdrop-blur-sm">
+      <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-3 bg-black/85 backdrop-blur-sm">
         <div className="bg-[#111214] border-0 sm:border sm:border-[#232429] w-full sm:w-[96vw] sm:max-w-[1440px] h-[100dvh] sm:h-[94dvh] rounded-none sm:rounded-xl shadow-2xl overflow-hidden flex flex-col">
 
           {/* HEADER */}
-          <div className="px-4 sm:px-5 py-3 border-b border-[#232429] bg-[#141518] flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="font-mono text-[11px] font-semibold text-[#F4F4F5] bg-[#1A1B20] px-2.5 py-1 rounded border border-[#27282E] shrink-0">
-                {draft.codigoRelatorio}
-              </span>
-              <Badge variant={draft.status === 'finalizado' ? 'success' : 'warning'} size="sm">
-                {draft.status === 'finalizado' ? 'Finalizado' : 'Rascunho'}
-              </Badge>
-              {(linkedOrder || draft.inspecaoCodigo) && (
-                <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] text-[#34D399] bg-[#122620] px-2 py-0.5 rounded border border-[#2EB88A]/30 shrink-0">
-                  <Link2 className="w-3 h-3" />
-                  {linkedOrder?.id || draft.inspecaoCodigo}
+          <div className="px-4 sm:px-5 py-3 border-b border-[#232429] bg-[#141518] flex flex-col gap-2.5 shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 min-w-0 flex-1">
+                <span className="font-mono text-[11px] font-semibold text-[#F4F4F5] bg-[#1A1B20] px-2.5 py-1 rounded border border-[#27282E] shrink-0">
+                  {draft.codigoRelatorio}
                 </span>
-              )}
-              <div className="min-w-0">
-                <h2 className="text-sm sm:text-base font-bold text-[#F4F4F5] truncate">
-                  Relatório de Inspeção Ambiental — {draft.unidade || 'Nova Unidade'}
-                </h2>
-                <p className="text-[11px] text-[#71717A] truncate">
-                  Cliente: <strong className="text-[#A1A1AA]">{draft.clienteNome || 'Não definido'}</strong> • Responsável: {draft.responsavel}
-                </p>
+                <Badge variant={draft.status === 'finalizado' ? 'success' : 'warning'} size="sm">
+                  {draft.status === 'finalizado' ? 'Finalizado' : 'Rascunho'}
+                </Badge>
+                {(linkedOrder || draft.inspecaoCodigo) && (
+                  <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#34D399] bg-[#122620] px-2 py-0.5 rounded border border-[#2EB88A]/30 shrink-0">
+                    <Link2 className="w-3 h-3" />
+                    {linkedOrder?.id || draft.inspecaoCodigo}
+                  </span>
+                )}
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#1A1B20] border border-[#27282E] text-[#A1A1AA] shrink-0">
+                  {disciplineMeta.shortLabel}
+                </span>
+
+                <div className="min-w-[220px] flex-1">
+                  <h2 className="text-sm sm:text-base font-bold text-[#F4F4F5] truncate">
+                    {reportMeta.shortTitle} — {draft.unidade || 'Nova Unidade'}
+                  </h2>
+                  <p className="text-[11px] text-[#71717A] truncate">
+                    Cliente: <strong className="text-[#A1A1AA]">{draft.clienteNome || 'Não definido'}</strong> • Responsável: {draft.responsavel}
+                  </p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22] transition shrink-0"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            <div className="flex items-center gap-2 flex-wrap justify-end pt-1 border-t border-[#1F2024]/60">
               {linkedOrder && (
                 <button
                   type="button"
@@ -585,7 +665,7 @@ export default function ReportEditorModal({
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/40 rounded-lg transition"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">Sincronizar Checklist</span>
+                  <span className="hidden sm:inline">Sincronizar Checklist</span>
                 </button>
               )}
 
@@ -621,7 +701,7 @@ export default function ReportEditorModal({
                 title={draft.publicEnabled ? 'Portal público ativo (clique para desativar)' : 'Gerar link público somente leitura para o cliente'}
               >
                 <Globe className="w-3.5 h-3.5 text-[#34D399]" />
-                <span className="hidden lg:inline">
+                <span className="hidden sm:inline">
                   {sharingLoading ? 'Atualizando...' : draft.publicEnabled ? 'Link Ativo' : 'Link Cliente'}
                 </span>
               </button>
@@ -634,7 +714,7 @@ export default function ReportEditorModal({
                   title="Copiar link do portal público para enviar ao cliente"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span className="hidden xl:inline">Copiar URL</span>
+                  <span className="hidden md:inline">Copiar URL</span>
                 </button>
               )}
 
@@ -645,7 +725,7 @@ export default function ReportEditorModal({
                 title="Copiar resumo executivo para WhatsApp / E-mail"
               >
                 <Share2 className="w-3.5 h-3.5 text-[#34D399]" />
-                <span className="hidden lg:inline">Resumo</span>
+                <span className="hidden sm:inline">Resumo</span>
               </button>
 
               <button
@@ -654,15 +734,7 @@ export default function ReportEditorModal({
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] border border-[#2D2F36] rounded-lg transition"
               >
                 <Printer className="w-3.5 h-3.5 text-[#34D399]" />
-                <span className="hidden sm:inline">Visualizar / PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                className="p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22] transition"
-              >
-                <X className="w-5 h-5" />
+                <span>Visualizar PDF</span>
               </button>
             </div>
           </div>
@@ -677,6 +749,51 @@ export default function ReportEditorModal({
                 className="text-[11px] text-[#A1A1AA] hover:text-[#F4F4F5]"
               >
                 Dispensar
+              </button>
+            </div>
+          )}
+
+          {/* RESUMO DO QUE FOI IMPORTADO DO CHECKLIST (FLUXO PÓS-CHECKLIST) */}
+          {linkedOrder && (
+            <div className="px-4 sm:px-5 py-2 bg-[#0D0E10] border-b border-[#1F2024] flex flex-wrap items-center justify-between gap-2 text-[11px] shrink-0">
+              <div className="flex items-center gap-2 flex-wrap text-[#A1A1AA]">
+                <span className="inline-flex items-center gap-1 font-semibold text-[#34D399]">
+                  <Layers className="w-3.5 h-3.5" />
+                  Importado do Checklist {linkedOrder.id}:
+                </span>
+                <span className="font-mono text-[#E4E4E7]">
+                  {linkedSummary ? linkedSummary.totalAvaliados : draft.itensAvaliados} avaliados
+                </span>
+                <span>•</span>
+                <span className="font-mono text-[#34D399]">
+                  {linkedSummary ? linkedSummary.totalSim : draft.conformidades} Sim
+                </span>
+                <span>•</span>
+                <span className="font-mono text-[#FB7185]">
+                  {linkedSummary ? linkedSummary.totalNao : (draft.desvios || []).length} desvios
+                </span>
+                <span>•</span>
+                <span className="font-mono text-[#A1A1AA]">
+                  {linkedSummary ? linkedSummary.totalNA : draft.itensNaoAplicaveis || 0} N/A
+                </span>
+                <span>•</span>
+                <span className="font-mono text-[#E4E4E7]">
+                  {attachedCount} foto(s) no relatório
+                </span>
+                {topicBreakdown.length > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-[#A1A1AA]">{topicBreakdown.length} áreas avaliadas</span>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncFromChecklist}
+                className="text-[11px] font-medium text-[#34D399] hover:underline flex items-center gap-1 shrink-0"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Reimportar tudo do checklist
               </button>
             </div>
           )}
@@ -793,16 +910,16 @@ export default function ReportEditorModal({
           {activeTab === 'photos' ? (
             /* ABA 3: REGISTRO FOTOGRÁFICO EM 2 COLUNAS (56 PONTOS DOS SLIDES 5-32) */
             <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden bg-[#0D0E10]">
-              {/* Sidebar das 5 Seções Fotográficas (horizontal em mobile/tablet, lateral em desktop) */}
+              {/* Sidebar das Seções Fotográficas (horizontal em mobile/tablet, lateral em desktop) */}
               <aside className="lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-[#232429] bg-[#111214] p-2.5">
                 <div className="hidden lg:block px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#71717A] mb-1">
-                  Blocos Fotográficos (5 Seções)
+                  Blocos Fotográficos ({photoSections.length} Seções)
                 </div>
                 <div className="flex lg:flex-col gap-1.5 lg:gap-1 overflow-x-auto lg:overflow-y-auto pb-1 lg:pb-0">
-                  {PHOTO_SECTIONS.map((sec) => {
+                  {photoSections.map((sec) => {
                     const secItems = photos.filter((f) => f.secao === sec);
                     const secFilled = secItems.filter((f) => Boolean(f.fotoUrl)).length;
-                    const active = selectedPhotoSection === sec;
+                    const active = activePhotoSection === sec;
                     return (
                       <button
                         key={sec}
@@ -832,9 +949,9 @@ export default function ReportEditorModal({
               <div className="flex-1 min-w-0 flex flex-col min-h-0">
                 <div className="px-4 py-3 bg-[#141518] border-b border-[#232429] flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
                   <div>
-                    <h3 className="font-semibold text-[#F4F4F5]">{selectedPhotoSection}</h3>
+                    <h3 className="font-semibold text-[#F4F4F5]">{activePhotoSection}</h3>
                     <p className="text-[11px] text-[#71717A]">
-                      Anexe as evidências fotográficas nos pontos correspondentes (apenas itens com foto são exibidos no PDF final).
+                      Anexe as evidências fotográficas nos pontos correspondentes (apenas itens marcados com foto são exibidos no PDF A4 final).
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1245,7 +1362,7 @@ export default function ReportEditorModal({
                       </div>
 
                       <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-3">
-                        <label className="text-[10px] uppercase font-medium text-[#FB7185] block mb-1">Não Conformidades Ambientais</label>
+                        <label className="text-[10px] uppercase font-medium text-[#FB7185] block mb-1">{reportMeta.ncLabel}</label>
                         <input
                           type="number"
                           min="0"
@@ -1256,7 +1373,7 @@ export default function ReportEditorModal({
                       </div>
 
                       <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-3">
-                        <label className="text-[10px] uppercase font-medium text-[#A1A1AA] block mb-1">Ocorrências Ambientais</label>
+                        <label className="text-[10px] uppercase font-medium text-[#A1A1AA] block mb-1">{reportMeta.occurrenceLabel}</label>
                         <input
                           type="number"
                           min="0"
@@ -1297,6 +1414,66 @@ export default function ReportEditorModal({
                       </div>
                     </div>
                   </div>
+
+                  {/* Desempenho por Temática importado diretamente do Checklist */}
+                  {topicBreakdown.length > 0 && (
+                    <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1F2024] pb-2.5">
+                        <div>
+                          <h3 className="font-semibold text-[#F4F4F5] text-sm flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-[#34D399]" />
+                            Desempenho por Temática (Importado do Checklist)
+                          </h3>
+                          <p className="text-[11px] text-[#71717A]">
+                            Consolidação automática das {topicBreakdown.length} áreas avaliadas na vistoria de origem.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                        {topicBreakdown.map((t) => (
+                          <div
+                            key={t.topic}
+                            className="bg-[#0D0E10] border border-[#232429] rounded-lg p-3 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-[#F4F4F5] truncate" title={t.topic}>
+                                {t.topic}
+                              </span>
+                              <span
+                                className={`font-mono font-bold text-xs shrink-0 ${
+                                  t.percent >= 85
+                                    ? 'text-[#34D399]'
+                                    : t.percent >= 70
+                                    ? 'text-[#FBBF24]'
+                                    : 'text-[#FB7185]'
+                                }`}
+                              >
+                                {t.percent}%
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-[#1A1B20] rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  t.percent >= 85
+                                    ? 'bg-[#2EB88A]'
+                                    : t.percent >= 70
+                                    ? 'bg-[#F59E0B]'
+                                    : 'bg-[#F43F5E]'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.max(0, t.percent))}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] font-mono text-[#71717A]">
+                              <span>Sim: <strong className="text-[#34D399]">{t.sim}</strong></span>
+                              <span>Não: <strong className={t.nao > 0 ? 'text-[#FB7185]' : 'text-[#A1A1AA]'}>{t.nao}</strong></span>
+                              <span>N/A: {t.na}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1372,10 +1549,32 @@ export default function ReportEditorModal({
                     <div className="space-y-3">
                       {draft.desvios.map((d, idx) => (
                         <div key={idx} className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono font-semibold text-[#F4F4F5] bg-[#1A1B20] px-2.5 py-0.5 rounded border border-[#27282E]">
-                              Desvio Nº {idx + 1}
-                            </span>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-semibold text-[#F4F4F5] bg-[#1A1B20] px-2.5 py-0.5 rounded border border-[#27282E]">
+                                Desvio Nº {idx + 1}
+                              </span>
+                              {d.tematica && (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
+                                  {d.nrCode ? `${d.nrCode} • ` : ''}{d.tematica}
+                                </span>
+                              )}
+                              {d.depoisFotoUrl && (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                                  Plano de Ação com Evidência Depois
+                                </span>
+                              )}
+                              {d.fotoSlotOrdem && (
+                                <button
+                                  type="button"
+                                  onClick={() => jumpToPhotoSlot(d.fotoSlotOrdem)}
+                                  className="text-[10px] font-mono text-[#34D399] hover:underline flex items-center gap-1"
+                                >
+                                  <Camera className="w-3 h-3" />
+                                  Bloco Foto #{d.fotoSlotOrdem}
+                                </button>
+                              )}
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleRemoveDeviation(idx)}
@@ -1384,6 +1583,20 @@ export default function ReportEditorModal({
                               <Trash2 className="w-3.5 h-3.5" /> Remover
                             </button>
                           </div>
+
+                          {d.evidenciaFotoUrl && (
+                            <div className="flex items-center gap-3 bg-[#0D0E10] border border-[#232429] rounded-lg p-2">
+                              <img
+                                src={sanitizeMediaUrl(d.evidenciaFotoUrl)}
+                                alt={`Evidência Desvio ${idx + 1}`}
+                                onClick={() => d.fotoSlotOrdem && openLightboxByKey(`slot-${d.fotoSlotOrdem}`)}
+                                className="w-14 h-11 object-cover rounded border border-[#27282E] cursor-pointer shrink-0"
+                              />
+                              <span className="text-[11px] text-[#A1A1AA]">
+                                Evidência fotográfica importada automaticamente do checklist para este desvio.
+                              </span>
+                            </div>
+                          )}
 
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                             <div className="md:col-span-2">
@@ -1405,7 +1618,9 @@ export default function ReportEditorModal({
                                 className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                               >
                                 {DEVIATION_CLASSIFICATIONS.map((c) => (
-                                  <option key={c.value} value={c.value}>{c.label}</option>
+                                  <option key={c.value} value={c.value}>
+                                    {formatDeviationClassLabel(c.value, effectiveDiscipline)}
+                                  </option>
                                 ))}
                               </select>
                               {d.classificacao === 'Não Conformidade Ambiental' && (
@@ -1480,7 +1695,7 @@ export default function ReportEditorModal({
                     {/* Escala de Aderência Ambiental (Slides 34 e 35) */}
                     <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-3">
                       <h3 className="font-semibold text-[#F4F4F5] text-sm">
-                        Classificação do Nível de Aderência Ambiental
+                        {reportMeta.adherenceTitle}
                       </h3>
                       <p className="text-[#71717A] text-[11px]">
                         Calculado automaticamente pelo Índice Geral de Conformidade ({Number(draft.indiceConformidade || 0).toFixed(1)}%).
@@ -1509,7 +1724,7 @@ export default function ReportEditorModal({
                     {/* Nível de Maturidade (Tabela 02 Slide 34) */}
                     <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-3">
                       <h3 className="font-semibold text-[#F4F4F5] text-sm">
-                        Nível de Maturidade da Gestão Ambiental
+                        {reportMeta.maturityTitle}
                       </h3>
                       <div className="space-y-2">
                         {MATURITY_LEVELS.map((m) => {
@@ -1583,7 +1798,7 @@ export default function ReportEditorModal({
                       </div>
 
                       <textarea
-                        rows={8}
+                        rows={6}
                         value={draft.conclusaoTexto || ''}
                         onChange={(e) => updateField('conclusaoTexto', e.target.value)}
                         placeholder="Redija ou gere automaticamente a conclusão com base no índice de conformidade, maturidade, pontos positivos e desvios..."
@@ -1596,11 +1811,11 @@ export default function ReportEditorModal({
             </div>
           )}
 
-          {/* RODAPÉ */}
-          <div className="px-4 py-2.5 border-t border-[#1F2024] bg-[#111214] flex items-center justify-between gap-3 shrink-0 text-xs pb-safe">
+          {/* RODAPÉ COM NAVEGAÇÃO GUIADA POR ETAPAS */}
+          <div className="px-4 py-2.5 border-t border-[#1F2024] bg-[#111214] flex flex-wrap items-center justify-between gap-3 shrink-0 text-xs pb-safe">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[#71717A] truncate">
-                Kivo • Relatório ({draft.clienteNome || 'Multi-Cliente'})
+                Etapa {currentStepIdx + 1}/4 • {draft.clienteNome || 'Multi-Cliente'}
               </span>
               {autoSaveState === 'saving' && (
                 <span className="text-[11px] text-[#FBBF24] font-medium shrink-0">• Salvando rascunho...</span>
@@ -1609,13 +1824,44 @@ export default function ReportEditorModal({
                 <span className="text-[11px] text-[#34D399] font-medium shrink-0">• Salvo automaticamente ✓</span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleCloseModal}
-              className="px-4 py-1.5 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1D22] rounded-lg transition shrink-0"
-            >
-              Fechar
-            </button>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {currentStepIdx > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(STEP_TABS[currentStepIdx - 1])}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#1C1D22] hover:bg-[#25272E] text-[#E4E4E7] border border-[#2D2F36] rounded-lg transition"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Etapa Anterior</span>
+                </button>
+              )}
+              {currentStepIdx < STEP_TABS.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(STEP_TABS[currentStepIdx + 1])}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg transition"
+                >
+                  <span>Próxima Etapa</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPrintView(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg transition"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Visualizar PDF</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="px-3.5 py-1.5 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1D22] rounded-lg transition shrink-0"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1623,6 +1869,7 @@ export default function ReportEditorModal({
       {showPrintView && (
         <ReportPrintView
           report={draft}
+          linkedOrder={linkedOrder}
           clientLogoUrl={clientLogoUrl}
           userProfile={userProfile}
           onClose={() => setShowPrintView(false)}
@@ -1638,4 +1885,9 @@ export default function ReportEditorModal({
       />
     </>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 }

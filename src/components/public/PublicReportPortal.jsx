@@ -12,7 +12,12 @@ import {
   FileBarChart2
 } from 'lucide-react';
 import { ReportService } from '../../supabase/reportService';
-import { PHOTO_SECTIONS, calculateAdherenceLevel } from '../../data/reportTemplateData';
+import {
+  getReportMetaByDiscipline,
+  formatDeviationClassLabel,
+  getPhotoSectionsForReport,
+  calculateAdherenceLevel
+} from '../../data/reportTemplateData';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import ImageLightboxModal from '../common/ImageLightboxModal';
 import QrCodeSvg from '../common/QrCodeSvg';
@@ -86,6 +91,7 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
     );
   }
 
+  const reportMeta = getReportMetaByDiscipline(report.discipline);
   const aderencia = report.nivelAderencia || calculateAdherenceLevel(report.indiceConformidade);
   const formattedDate = report.dataHora
     ? new Date(report.dataHora).toLocaleString('pt-BR', {
@@ -101,10 +107,13 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
     (f) => f.incluirNoRelatorio !== false && Boolean(f.fotoUrl)
   );
 
-  const photosBySection = PHOTO_SECTIONS.map((sec) => ({
-    section: sec,
-    items: activePhotos.filter((f) => f.secao === sec)
-  })).filter((g) => g.items.length > 0);
+  const reportSections = getPhotoSectionsForReport(report);
+  const photosBySection = reportSections
+    .map((sec) => ({
+      section: sec,
+      items: activePhotos.filter((f) => f.secao === sec)
+    }))
+    .filter((g) => g.items.length > 0);
 
   const lightboxImages = [
     ...(report.fachadaUrl ? [{ url: report.fachadaUrl, title: 'Fachada da Unidade', subtitle: report.unidade }] : []),
@@ -168,7 +177,7 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
                   <span>Versão Oficial Compartilhada</span>
                 </div>
                 <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 leading-tight">
-                  RELATÓRIO TÉCNICO DE INSPEÇÃO AMBIENTAL
+                  {reportMeta.title}
                 </h1>
                 <p className="text-xs font-semibold text-slate-600 mt-0.5">
                   Kivo • Cliente: <strong className="text-slate-900">{report.clienteNome || 'Não informado'}</strong>
@@ -272,11 +281,11 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
                 <span className="text-xl font-black font-mono text-slate-900">{report.desviosPlanoAcao}</span>
               </div>
               <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-                <span className="text-[10px] uppercase text-rose-700 font-semibold block">Não Conformidades</span>
+                <span className="text-[10px] uppercase text-rose-700 font-semibold block">{reportMeta.ncLabel}</span>
                 <span className="text-xl font-black font-mono text-rose-800">{report.naoConformidades}</span>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <span className="text-[10px] uppercase text-slate-500 font-semibold block">Ocorrências Ambientais</span>
+                <span className="text-[10px] uppercase text-slate-500 font-semibold block">{reportMeta.occurrenceLabel}</span>
                 <span className="text-xl font-black font-mono text-slate-900">{report.ocorrenciasAmbientais}</span>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
@@ -326,7 +335,7 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
                         <td className="p-2 border border-slate-300 text-center font-mono font-bold">{idx + 1}</td>
                         <td className="p-2 border border-slate-300 text-slate-800">{d.descricao}</td>
                         <td className="p-2 border border-slate-300 font-semibold text-slate-900">
-                          {d.classificacao}
+                          {formatDeviationClassLabel(d.classificacao, report.discipline)}
                           {d.classificacao === 'Não Conformidade Ambiental' && d.severidadeNc ? ` (${d.severidadeNc})` : ''}
                         </td>
                         <td className="p-2 border border-slate-300 text-slate-700">{d.tratativa || '—'}</td>
@@ -390,7 +399,7 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 block">Nível de Aderência Ambiental</span>
+                <span className="text-[10px] uppercase font-semibold text-slate-500 block">{reportMeta.adherenceShortTitle}</span>
                 <span className="font-bold text-sm text-slate-900">{aderencia}</span>
                 <span className="text-[11px] text-slate-500 block">
                   Índice apurado: {Number(report.indiceConformidade || 0).toFixed(1)}%

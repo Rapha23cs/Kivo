@@ -15,7 +15,8 @@ import {
   Globe,
   AlertTriangle,
   ArrowRight,
-  BarChart3
+  BarChart3,
+  CheckCircle2
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -48,6 +49,7 @@ export default function ReportsModule({
   const [printingReport, setPrintingReport] = useState(null);
   const [showImportPicker, setShowImportPicker] = useState(false);
   const [showConsolidatedModal, setShowConsolidatedModal] = useState(false);
+  const [concludingCode, setConcludingCode] = useState(null);
 
   useEffect(() => {
     if (initialEditingReport) {
@@ -407,15 +409,58 @@ export default function ReportsModule({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-[#1F2024] flex items-center justify-between gap-2">
+                <div className="pt-3 border-t border-[#1F2024] flex items-center justify-between gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setEditingReport(rep)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
+                    className="flex-1 min-w-[115px] flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
                   >
                     <Edit3 className="w-3.5 h-3.5 text-[#34D399]" />
                     Abrir / Editar
                   </button>
+                  {(rep.status !== 'finalizado' || (linkedOrder && linkedOrder.status !== 'completed')) && (
+                    <button
+                      type="button"
+                      disabled={concludingCode === rep.codigoRelatorio}
+                      onClick={async () => {
+                        if (!rep.inspecaoId && !rep.inspecaoCodigo) {
+                          toast.info({
+                            title: 'Vincule uma vistoria primeiro',
+                            message: 'Abra o relatório e selecione a vistoria de origem antes de concluir.'
+                          });
+                          setEditingReport(rep);
+                          return;
+                        }
+                        const ok = await confirm({
+                          title: 'Concluir relatório e vistoria?',
+                          message: linkedOrder
+                            ? `O relatório ${rep.codigoRelatorio} será marcado como Finalizado e a vistoria ${linkedOrder.id} será marcada como Concluída.`
+                            : `O relatório ${rep.codigoRelatorio} será marcado como Finalizado.`,
+                          detail: rep.unidade || 'Unidade',
+                          confirmLabel: 'Concluir tudo',
+                          cancelLabel: 'Cancelar'
+                        });
+                        if (!ok) return;
+                        setConcludingCode(rep.codigoRelatorio);
+                        try {
+                          await onSaveReport({ ...rep, status: 'finalizado' });
+                          toast.success({
+                            title: linkedOrder ? 'Relatório e vistoria concluídos!' : 'Relatório finalizado!',
+                            message: linkedOrder
+                              ? `${rep.codigoRelatorio} • ${linkedOrder.id} concluída`
+                              : rep.codigoRelatorio
+                          });
+                        } finally {
+                          setConcludingCode(null);
+                        }
+                      }}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                      title="Finalizar relatório e concluir automaticamente a vistoria vinculada"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{concludingCode === rep.codigoRelatorio ? 'Concluindo...' : 'Concluir'}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPrintingReport(rep)}
@@ -479,6 +524,7 @@ export default function ReportsModule({
       {printingReport && (
         <ReportPrintView
           report={printingReport}
+          linkedOrder={findLinkedOrder(printingReport)}
           userProfile={userProfile}
           clientLogoUrl={
             clients.find(

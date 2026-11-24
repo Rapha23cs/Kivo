@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Download, Camera } from 'lucide-react';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
@@ -32,7 +33,7 @@ export default function ImageLightboxModal({
 
   if (!isOpen || !current) return null;
 
-  return (
+  const content = (
     <div
       className="no-print fixed inset-0 z-[95] bg-black/92 backdrop-blur-md flex flex-col justify-between p-3 sm:p-6"
       onClick={onClose}
@@ -128,4 +129,9 @@ export default function ImageLightboxModal({
       )}
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+  return content;
 }

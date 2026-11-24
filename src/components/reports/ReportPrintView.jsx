@@ -1,14 +1,52 @@
-import React, { useState } from 'react';
-import { X, Printer, FileBarChart2, Building2, BookOpen } from 'lucide-react';
-import { PHOTO_SECTIONS, calculateAdherenceLevel } from '../../data/reportTemplateData';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  X,
+  Printer,
+  FileBarChart2,
+  Building2,
+  BookOpen,
+  Info,
+  Layers
+} from 'lucide-react';
+import {
+  REPORT_RESULT_GUIDELINES,
+  MATURITY_LEVELS,
+  ADHERENCE_RULES,
+  getReportMetaByDiscipline,
+  formatDeviationClassLabel,
+  getPhotoSectionsForReport,
+  calculateAdherenceLevel
+} from '../../data/reportTemplateData';
+import { calculateTopicBreakdown } from '../../data/emserhChecklistData';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import QrCodeSvg from '../common/QrCodeSvg';
 
-export default function ReportPrintView({ report, clientLogoUrl = '', userProfile = null, onClose }) {
-  const [showCover, setShowCover] = useState(true);
+export default function ReportPrintView({
+  report,
+  linkedOrder = null,
+  clientLogoUrl = '',
+  userProfile = null,
+  onClose
+}) {
+  const [showCover, setShowCover] = useState(false);
+  const [showTopicBreakdown, setShowTopicBreakdown] = useState(true);
+  const [showGuidelines, setShowGuidelines] = useState(false);
+
+  useEffect(() => {
+    if (!report || typeof document === 'undefined') return undefined;
+    document.body.classList.add('kivo-has-print-modal');
+    return () => {
+      document.body.classList.remove('kivo-has-print-modal');
+    };
+  }, [report]);
+
   if (!report) return null;
 
+  const discipline = report.discipline || linkedOrder?.discipline || 'meio_ambiente';
+  const reportMeta = getReportMetaByDiscipline(discipline);
   const aderencia = report.nivelAderencia || calculateAdherenceLevel(report.indiceConformidade);
+
   const formattedDate = report.dataHora
     ? new Date(report.dataHora).toLocaleString('pt-BR', {
         day: '2-digit',
@@ -19,43 +57,88 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
       })
     : 'Não informada';
 
+  const topicBreakdown = useMemo(() => {
+    if (Array.isArray(report.desempenhoTematico) && report.desempenhoTematico.length > 0) {
+      return report.desempenhoTematico;
+    }
+    if (linkedOrder?.checklist?.length) {
+      return Object.values(calculateTopicBreakdown(linkedOrder.checklist));
+    }
+    return [];
+  }, [report.desempenhoTematico, linkedOrder]);
+
   const activePhotos = (report.registrosFotograficos || []).filter(
     (f) => f.incluirNoRelatorio !== false && Boolean(f.fotoUrl)
   );
 
-  const photosBySection = PHOTO_SECTIONS.map((sec) => ({
-    section: sec,
-    items: activePhotos.filter((f) => f.secao === sec)
-  })).filter((g) => g.items.length > 0);
+  const reportSections = getPhotoSectionsForReport(report);
+  const photosBySection = reportSections
+    .map((sec) => ({
+      section: sec,
+      items: activePhotos.filter((f) => f.secao === sec)
+    }))
+    .filter((g) => g.items.length > 0);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="bg-white text-slate-900 w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col">
+  const content = (
+    <div className="kivo-print-modal-root fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="kivo-print-modal-card bg-white text-slate-900 w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col">
         {/* Barra Superior (Oculta na Impressão) */}
-        <div className="no-print bg-[#111214] text-[#F4F4F5] px-6 py-3.5 flex items-center justify-between border-b border-[#1F2024]">
+        <div className="no-print bg-[#111214] text-[#F4F4F5] px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-[#1F2024]">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-[#122620] text-[#34D399] rounded-lg border border-[#2EB88A]/30">
               <FileBarChart2 className="w-4 h-4" />
             </div>
-            <span className="font-semibold text-sm">Relatório de Inspeção Ambiental</span>
-            <span className="text-xs bg-[#0D0E10] px-2.5 py-0.5 rounded-lg text-[#34D399] font-mono border border-[#232429]">
-              {report.codigoRelatorio}
-            </span>
+            <div>
+              <span className="font-semibold text-sm block leading-tight">{reportMeta.shortTitle} (A4)</span>
+              <span className="text-[10px] text-[#34D399] font-mono">{report.codigoRelatorio}</span>
+            </div>
           </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setShowCover((prev) => !prev)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border transition ${
                 showCover
                   ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40'
                   : 'bg-[#1C1D22] text-[#A1A1AA] border-[#2D2F36]'
               }`}
-              title="Exibir ou ocultar capa executiva na página 1"
+              title="Exibir ou ocultar capa executiva adicional na página 1"
             >
               <BookOpen className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Capa Executiva</span>
+              <span className="hidden sm:inline">Capa Extra</span>
             </button>
+
+            {topicBreakdown.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowTopicBreakdown((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border transition ${
+                  showTopicBreakdown
+                    ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40'
+                    : 'bg-[#1C1D22] text-[#A1A1AA] border-[#2D2F36]'
+                }`}
+                title="Incluir painel de desempenho por temática importado do checklist"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Temáticas Checklist</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowGuidelines((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border transition ${
+                showGuidelines
+                  ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40'
+                  : 'bg-[#1C1D22] text-[#A1A1AA] border-[#2D2F36]'
+              }`}
+              title="Incluir tabelas de critérios e diretrizes metodológicas"
+            >
+              <Info className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Tabelas 01/02/03</span>
+            </button>
+
             <button
               type="button"
               onClick={() => window.print()}
@@ -64,6 +147,7 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
               <Printer className="w-4 h-4" />
               Imprimir / Salvar PDF
             </button>
+
             <button
               type="button"
               onClick={onClose}
@@ -74,18 +158,18 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
           </div>
         </div>
 
-        {/* Corpo Imprimível */}
-        <div className="p-8 sm:p-10 overflow-y-auto space-y-8 text-sm bg-white print:p-4">
+        {/* Documento Executivo A4 */}
+        <div className="kivo-print-scroll p-6 sm:p-10 overflow-y-auto space-y-8 text-sm bg-white print:p-4">
           {/* CAPA EXECUTIVA OPCIONAL (PÁGINA 1) */}
           {showCover && (
-            <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50/50 p-6 sm:p-10 space-y-6 print:break-after-page">
+            <section className="kivo-print-break-after rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50/50 p-6 sm:p-10 space-y-6">
               <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-5">
                 <div className="flex items-center gap-3">
                   <img src="/icon.svg" alt="Logo Kivo" className="w-11 h-11 rounded-xl shrink-0" />
                   <div>
                     <span className="text-base font-black tracking-tight text-slate-900 block leading-none">KIVO</span>
                     <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-700 font-semibold">
-                      Auditoria &amp; Conformidade Ambiental
+                      {reportMeta.documentSubtitle}
                     </span>
                   </div>
                 </div>
@@ -100,7 +184,7 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
 
               <div className="space-y-2 py-2">
                 <span className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold uppercase tracking-wider">
-                  Relatório Técnico de Inspeção Ambiental
+                  {reportMeta.shortTitle}
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight">
                   {report.unidade || 'Unidade Auditada'}
@@ -151,13 +235,13 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
             </section>
           )}
 
-          {/* CABEÇALHO DO RELATÓRIO */}
+          {/* Cabeçalho Institucional */}
           <div className="border-b-2 border-emerald-700 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">
               <img src="/icon.svg" alt="Logo Kivo" className="w-10 h-10 rounded-lg shrink-0" />
               <div>
                 <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
-                  RELATÓRIO DE INSPEÇÃO AMBIENTAL
+                  {reportMeta.title}
                 </h1>
                 <p className="text-xs font-semibold text-slate-600 mt-1">
                   Kivo • Cliente: <strong className="text-slate-900">{report.clienteNome || 'Não informado'}</strong>
@@ -180,14 +264,13 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
             </div>
           </div>
 
-          {/* SLIDE 1: DADOS GERAIS + FACHADA + 8 RESULTADOS DA INSPEÇÃO */}
+          {/* 1. Dados da Unidade, Fachada e 8 Resultados */}
           <section className="space-y-4">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-emerald-600 pl-2.5">
               1. Dados da Unidade e Resultados da Inspeção
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Tabela de Dados da Inspeção */}
               <div className="md:col-span-2 grid grid-cols-2 gap-2.5 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
                 <div>
                   <span className="text-[10px] uppercase font-semibold text-slate-500 block">Unidade</span>
@@ -223,7 +306,6 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
                 </div>
               </div>
 
-              {/* Imagem da Fachada da Unidade */}
               <div className="border border-slate-200 rounded-xl bg-slate-50 p-3 flex flex-col items-center justify-center min-h-[160px]">
                 {report.fachadaUrl ? (
                   <>
@@ -243,7 +325,6 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
               </div>
             </div>
 
-            {/* Tabela dos 8 Resultados */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center text-xs">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <span className="text-[10px] uppercase text-slate-500 font-semibold block">Itens Avaliados</span>
@@ -258,11 +339,11 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
                 <span className="text-xl font-black font-mono text-slate-900">{report.desviosPlanoAcao}</span>
               </div>
               <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-                <span className="text-[10px] uppercase text-rose-700 font-semibold block">Não Conformidades</span>
+                <span className="text-[10px] uppercase text-rose-700 font-semibold block">{reportMeta.ncLabel}</span>
                 <span className="text-xl font-black font-mono text-rose-800">{report.naoConformidades}</span>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <span className="text-[10px] uppercase text-slate-500 font-semibold block">Ocorrências Ambientais</span>
+                <span className="text-[10px] uppercase text-slate-500 font-semibold block">{reportMeta.occurrenceLabel}</span>
                 <span className="text-xl font-black font-mono text-slate-900">{report.ocorrenciasAmbientais}</span>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
@@ -282,7 +363,49 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
             </div>
           </section>
 
-          {/* SLIDE 3: TABELA DE DESVIOS E OPORTUNIDADES DE MELHORIA */}
+          {/* Desempenho por Temática (Checklist) */}
+          {showTopicBreakdown && topicBreakdown.length > 0 && (
+            <section className="space-y-3 break-inside-avoid">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-emerald-600 pl-2.5">
+                Desempenho por Temática do Checklist ({topicBreakdown.length} Áreas)
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                {topicBreakdown.map((t) => (
+                  <div key={t.topic} className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900 truncate" title={t.topic}>{t.topic}</span>
+                      <span
+                        className={`font-mono font-bold shrink-0 ${
+                          t.percent >= 85
+                            ? 'text-emerald-700'
+                            : t.percent >= 70
+                            ? 'text-amber-700'
+                            : 'text-rose-700'
+                        }`}
+                      >
+                        {t.percent}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          t.percent >= 85 ? 'bg-emerald-600' : t.percent >= 70 ? 'bg-amber-500' : 'bg-rose-600'
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(0, t.percent))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono text-slate-600">
+                      <span>Sim: {t.sim}</span>
+                      <span>Não: {t.nao}</span>
+                      <span>N/A: {t.na}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 2. Desvios */}
           <section className="space-y-3 break-inside-avoid">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-rose-600 pl-2.5">
               2. Desvios e Oportunidades de Melhoria ({(report.desvios || []).length})
@@ -311,8 +434,10 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
                       <td className="p-2 border border-slate-300 text-center font-mono font-bold">{idx + 1}</td>
                       <td className="p-2 border border-slate-300 text-slate-800">{d.descricao}</td>
                       <td className="p-2 border border-slate-300 font-semibold text-slate-900">
-                        {d.classificacao}
-                        {d.classificacao === 'Não Conformidade Ambiental' && d.severidadeNc ? ` (${d.severidadeNc})` : ''}
+                        {formatDeviationClassLabel(d.classificacao, discipline)}
+                        {d.classificacao === 'Não Conformidade Ambiental' && d.severidadeNc
+                          ? ` (${d.severidadeNc})`
+                          : ''}
                       </td>
                       <td className="p-2 border border-slate-300 text-slate-700">{d.tratativa || '—'}</td>
                       <td className="p-2 border border-slate-300 text-slate-700">{d.responsavel || '—'}</td>
@@ -325,7 +450,7 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
             )}
           </section>
 
-          {/* SLIDES 5-32: REGISTROS FOTOGRÁFICOS */}
+          {/* 3. Registro Fotográfico */}
           <section className="space-y-5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-emerald-600 pl-2.5">
               3. Registro Fotográfico ({activePhotos.length} evidências anexadas)
@@ -352,9 +477,7 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
                         <p className="text-xs font-semibold text-slate-900 leading-snug">
                           {foto.ordem}. {foto.legenda}
                         </p>
-                        {foto.observacao && (
-                          <p className="text-[11px] text-slate-600">{foto.observacao}</p>
-                        )}
+                        {foto.observacao && <p className="text-[11px] text-slate-600">{foto.observacao}</p>}
                       </div>
                     ))}
                   </div>
@@ -363,7 +486,7 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
             )}
           </section>
 
-          {/* SLIDES 33-35: CONCLUSÃO DA INSPEÇÃO */}
+          {/* 4. Conclusão */}
           <section className="space-y-3 break-inside-avoid border-t-2 border-slate-200 pt-5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-slate-900 pl-2.5">
               4. Conclusão da Inspeção
@@ -371,7 +494,9 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <span className="text-[10px] uppercase font-semibold text-slate-500 block">Nível de Aderência Ambiental</span>
+                <span className="text-[10px] uppercase font-semibold text-slate-500 block">
+                  {reportMeta.adherenceShortTitle}
+                </span>
                 <span className="font-bold text-sm text-slate-900">{aderencia}</span>
                 <span className="text-[11px] text-slate-500 block">
                   Índice apurado: {Number(report.indiceConformidade || 0).toFixed(1)}%
@@ -388,7 +513,69 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
             </div>
           </section>
 
-          {/* Bloco Formal de Assinaturas */}
+          {/* Diretrizes Metodológicas Opcionais (Tabelas 01 e 02) */}
+          {showGuidelines && (
+            <section className="space-y-4 break-inside-avoid border-t-2 border-slate-200 pt-5">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-slate-600 pl-2.5">
+                Anexo — Diretrizes e Critérios de Classificação (Tabelas 01 e 02)
+              </h2>
+
+              <table className="w-full text-left text-xs border-collapse border border-slate-300">
+                <thead className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                  <tr>
+                    <th className="p-2 border border-slate-300 w-56">Indicador (Tabela 01)</th>
+                    <th className="p-2 border border-slate-300">Critério de Preenchimento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {REPORT_RESULT_GUIDELINES.map((g) => (
+                    <tr key={g.key} className="even:bg-slate-50">
+                      <td className="p-2 border border-slate-300 font-bold text-slate-900">{g.label}</td>
+                      <td className="p-2 border border-slate-300 text-slate-700">{g.criterion}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <table className="w-full text-left border-collapse border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                    <tr>
+                      <th className="p-2 border border-slate-300">Índice de Conformidade</th>
+                      <th className="p-2 border border-slate-300">Nível de Aderência</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ADHERENCE_RULES.map((r) => (
+                      <tr key={r.label} className="even:bg-slate-50">
+                        <td className="p-2 border border-slate-300 font-mono font-bold">{r.range}</td>
+                        <td className="p-2 border border-slate-300 font-semibold">{r.label}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <table className="w-full text-left border-collapse border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                    <tr>
+                      <th className="p-2 border border-slate-300">Nível de Maturidade</th>
+                      <th className="p-2 border border-slate-300">Critério</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {MATURITY_LEVELS.map((m) => (
+                      <tr key={m.value} className="even:bg-slate-50">
+                        <td className="p-2 border border-slate-300 font-bold">{m.label}</td>
+                        <td className="p-2 border border-slate-300 text-slate-700">{m.criterion}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {/* Assinaturas */}
           <section className="pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-8 break-inside-avoid text-center text-xs">
             <div className="space-y-1">
               <div className="h-14 flex items-end justify-center">
@@ -405,7 +592,7 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
                   {report.responsavel || userProfile?.name || 'Responsável Técnico'}
                 </p>
                 <p className="text-[11px] text-slate-500 font-mono">
-                  {userProfile?.registry || 'Auditor Ambiental • RT'}
+                  {userProfile?.registry || 'Auditor Técnico • RT'}
                 </p>
               </div>
             </div>
@@ -422,23 +609,24 @@ export default function ReportPrintView({ report, clientLogoUrl = '', userProfil
           {report.publicEnabled && report.publicToken && typeof window !== 'undefined' ? (
             <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-4">
               <div className="text-[10px] text-slate-500 font-mono space-y-0.5">
-                <p className="font-semibold text-slate-700">
-                  Relatório Técnico de Inspeção Ambiental • Gerado pelo sistema Kivo
-                </p>
+                <p className="font-semibold text-slate-700">{reportMeta.shortTitle} • Gerado pelo sistema Kivo</p>
                 <p>Validação digital online disponível em:</p>
-                <p className="text-emerald-700 break-all">
-                  {`${window.location.origin}/laudo/${report.publicToken}`}
-                </p>
+                <p className="text-emerald-700 break-all">{`${window.location.origin}/laudo/${report.publicToken}`}</p>
               </div>
               <QrCodeSvg value={`${window.location.origin}/laudo/${report.publicToken}`} size={68} />
             </div>
           ) : (
             <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 font-mono">
-              Relatório Técnico de Inspeção Ambiental • Gerado pelo sistema Kivo
+              {reportMeta.shortTitle} • Gerado pelo sistema Kivo
             </div>
           )}
         </div>
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+  return content;
 }

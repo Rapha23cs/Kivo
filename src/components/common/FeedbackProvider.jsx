@@ -123,7 +123,7 @@ export function FeedbackProvider({ children }) {
       {toasts.length > 0 && (
         <div
           aria-live="polite"
-          className="no-print fixed bottom-20 lg:bottom-5 left-3 right-3 sm:left-auto sm:right-5 sm:w-96 z-[80] flex flex-col gap-2 pointer-events-none"
+          className="no-print fixed bottom-20 sm:bottom-auto sm:top-4 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto sm:w-[420px] z-[80] flex flex-col gap-2 pointer-events-none"
         >
           {toasts.map((t) => {
             const cfg = TOAST_STYLES[t.type] || TOAST_STYLES.info;
