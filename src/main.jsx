@@ -7,6 +7,16 @@ import './index.css'
 
 const CHUNK_RELOAD_KEY = 'kivo_chunk_reload_at';
 
+function safeReloadToRootHash() {
+  if (typeof window === 'undefined') return;
+  const p = window.location.pathname || '/';
+  if (p !== '/' && p !== '/index.html' && !window.location.hash.startsWith('#/')) {
+    window.location.replace(`/#${p}${window.location.search}`);
+    return;
+  }
+  window.location.reload();
+}
+
 async function recoverFromStaleAssets() {
   try {
     const lastReload = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || '0');
@@ -19,7 +29,7 @@ async function recoverFromStaleAssets() {
   } catch {
     // ignora
   }
-  window.location.reload();
+  safeReloadToRootHash();
 }
 
 window.addEventListener('vite:preloadError', (event) => {
@@ -56,7 +66,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!hadController || refreshing) return;
       refreshing = true;
-      window.location.reload();
+      safeReloadToRootHash();
     });
 
     const notifyUpdateReady = (registration) => {

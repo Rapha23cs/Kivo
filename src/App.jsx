@@ -44,12 +44,12 @@ const TAB_TITLES = {
 };
 
 const TAB_PATHS = {
-  dashboard: '/painel',
-  orders: '/vistorias',
-  actions: '/acoes',
-  agenda: '/agenda',
-  reports: '/relatorios',
-  units: '/unidades'
+  dashboard: '/#/painel',
+  orders: '/#/vistorias',
+  actions: '/#/acoes',
+  agenda: '/#/agenda',
+  reports: '/#/relatorios',
+  units: '/#/unidades'
 };
 
 function resolveInitialRoute() {
@@ -62,14 +62,20 @@ function resolveInitialRoute() {
       publicReportToken: null
     };
   }
-  const path = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+  const rawPathname = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+  const rawHash = window.location.hash || '';
   const searchParams = new URLSearchParams(window.location.search || '');
   const laudoQueryToken = searchParams.get('laudo');
   const hasAuthCallback =
-    window.location.hash.includes('access_token=') ||
-    window.location.hash.includes('type=recovery') ||
+    rawHash.includes('access_token=') ||
+    rawHash.includes('type=recovery') ||
     window.location.search.includes('code=') ||
     window.location.search.includes('error=');
+
+  const hashPath = rawHash.startsWith('#/')
+    ? (rawHash.slice(1).split('?')[0].replace(/\/+$/, '') || '/')
+    : null;
+  const path = hashPath || rawPathname;
 
   if (laudoQueryToken) {
     return {
@@ -392,13 +398,19 @@ export default function App() {
         action: {
           label: 'Atualizar agora',
           onClick: () => {
+            const safeReload = () => {
+              const p = window.location.pathname || '/';
+              if (p !== '/' && p !== '/index.html' && !window.location.hash.startsWith('#/')) {
+                window.location.replace(`/#${p}${window.location.search}`);
+              } else {
+                window.location.reload();
+              }
+            };
             if (registration.waiting) {
               registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-              setTimeout(() => {
-                window.location.reload();
-              }, 1500);
+              setTimeout(safeReload, 1500);
             } else {
-              window.location.reload();
+              safeReload();
             }
           }
         }
@@ -777,13 +789,13 @@ export default function App() {
     const resolvedTab = TAB_PATHS[nextTab] ? nextTab : 'dashboard';
     setActiveTab(resolvedTab);
     if (typeof window !== 'undefined') {
-      const targetPath = TAB_PATHS[resolvedTab] || '/painel';
-      const currentFull = `${window.location.pathname}${window.location.search}`;
-      if (currentFull !== targetPath) {
+      const targetUrl = TAB_PATHS[resolvedTab] || '/#/painel';
+      const currentUrl = `${window.location.pathname}${window.location.hash}`;
+      if (currentUrl !== targetUrl) {
         if (replace) {
-          window.history.replaceState({}, '', targetPath);
+          window.history.replaceState({}, '', targetUrl);
         } else {
-          window.history.pushState({}, '', targetPath);
+          window.history.pushState({}, '', targetUrl);
         }
       }
     }
@@ -792,8 +804,8 @@ export default function App() {
   const openLegalRoute = (tab) => {
     setLegalModalTab(tab);
     if (typeof window !== 'undefined' && ['privacidade', 'termos', 'suporte'].includes(tab)) {
-      const target = `/${tab}`;
-      if (window.location.pathname !== target) {
+      const target = `/#/${tab}`;
+      if (`${window.location.pathname}${window.location.hash}` !== target) {
         window.history.pushState({}, '', target);
       }
     }
@@ -802,15 +814,15 @@ export default function App() {
   const navigatePublicAuth = (nextMode) => {
     setPublicAuthMode(nextMode);
     if (typeof window !== 'undefined') {
-      const target = nextMode === 'signup' ? '/cadastro' : nextMode === 'login' ? '/login' : '/';
-      if (window.location.pathname !== target) {
+      const target = nextMode === 'signup' ? '/#/cadastro' : nextMode === 'login' ? '/#/login' : '/';
+      if (`${window.location.pathname}${window.location.hash}` !== target) {
         window.history.pushState({}, '', target);
       }
     }
   };
 
   useEffect(() => {
-    const onPopState = () => {
+    const syncFromLocation = () => {
       const next = resolveInitialRoute();
       setIsNotFound(next.initialNotFound);
       setPublicReportToken(next.publicReportToken);
@@ -818,8 +830,12 @@ export default function App() {
       setLegalModalTab(next.initialLegalTab);
       if (next.initialTab) setActiveTab(next.initialTab);
     };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    window.addEventListener('popstate', syncFromLocation);
+    window.addEventListener('hashchange', syncFromLocation);
+    return () => {
+      window.removeEventListener('popstate', syncFromLocation);
+      window.removeEventListener('hashchange', syncFromLocation);
+    };
   }, []);
 
   useEffect(() => {
@@ -827,9 +843,10 @@ export default function App() {
     if (publicReportToken || isNotFound || recoveryMode || legalModalTab) return;
     if (supabaseEnabled && (!authChecked || !session || mfaRequired)) return;
     if (window.location.hash.includes('access_token=') || window.location.search.includes('code=')) return;
-    const expectedPath = TAB_PATHS[activeTab] || '/painel';
-    if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
-      window.history.replaceState({}, '', expectedPath);
+    const expectedUrl = TAB_PATHS[activeTab] || '/#/painel';
+    const currentUrl = `${window.location.pathname}${window.location.hash}`;
+    if (currentUrl === '/' || currentUrl === '/index.html' || window.location.pathname !== '/') {
+      window.history.replaceState({}, '', expectedUrl);
     }
   }, [supabaseEnabled, authChecked, session, mfaRequired, recoveryMode, publicReportToken, isNotFound, legalModalTab, activeTab]);
 
@@ -941,8 +958,8 @@ export default function App() {
               }
               setMfaRequired(false);
               setSession(nextSession);
-              if (typeof window !== 'undefined' && ['/login', '/entrar', '/cadastro', '/'].includes(window.location.pathname)) {
-                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/painel');
+              if (typeof window !== 'undefined') {
+                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/#/painel');
               }
             }}
           />
@@ -961,8 +978,12 @@ export default function App() {
             initialTab={legalModalTab}
             onClose={() => {
               setLegalModalTab(null);
-              if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
-                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/painel');
+              if (
+                typeof window !== 'undefined' &&
+                (['/privacidade', '/termos', '/suporte'].includes(window.location.pathname) ||
+                  ['#/privacidade', '#/termos', '#/suporte'].includes(window.location.hash))
+              ) {
+                window.history.replaceState({}, '', session ? (TAB_PATHS[activeTab] || '/#/painel') : '/');
               }
             }}
           />
@@ -1364,8 +1385,12 @@ export default function App() {
             initialTab={legalModalTab || 'privacidade'}
             onClose={() => {
               setLegalModalTab(null);
-              if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
-                window.history.replaceState({}, '', TAB_PATHS[activeTab] || '/painel');
+              if (
+                typeof window !== 'undefined' &&
+                (['/privacidade', '/termos', '/suporte'].includes(window.location.pathname) ||
+                  ['#/privacidade', '#/termos', '#/suporte'].includes(window.location.hash))
+              ) {
+                window.history.replaceState({}, '', session ? (TAB_PATHS[activeTab] || '/#/painel') : '/');
               }
             }}
           />
