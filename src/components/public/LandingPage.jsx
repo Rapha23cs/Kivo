@@ -343,7 +343,7 @@ export default function LandingPage({
                 { val: 'Matriz 5×5', label: 'Risco & 5W2H' },
                 { val: 'PDF + QR', label: 'Portal com PIN' }
               ].map((stat) => (
-                <div key={stat.val} className="bg-[#141518]/90 border border-[#232429] rounded-xl px-3 py-2.5">
+                <div key={stat.val} className="bg-[#141518] border border-[#232429] rounded-xl px-3 py-2.5">
                   <span className="font-mono font-bold text-[#34D399] block text-xs">{stat.val}</span>
                   <span className="text-[#71717A] text-[10px] block mt-0.5">{stat.label}</span>
                 </div>
@@ -369,7 +369,7 @@ export default function LandingPage({
               </div>
 
               {/* Interactive Tabs */}
-              <div className="px-4 pt-3 bg-[#141518]/60 border-b border-[#1F2024] flex items-center gap-1.5 overflow-x-auto text-[11px]">
+              <div className="px-4 pt-3 bg-[#0D0E10] border-b border-[#1F2024] flex items-center gap-1.5 overflow-x-auto text-[11px]">
                 {[
                   { id: 'checklist', label: 'Checklist em Campo' },
                   { id: 'sst', label: 'SST & Matriz 5×5' },

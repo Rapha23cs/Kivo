@@ -123,8 +123,9 @@ html[data-theme="light"] .bg-\[\#0E0F12\] {
   background-color: #F8FAFC !important;
 }
 
-html[data-theme="light"] .bg-\[\#0B0B0D\]\/90 {
-  background-color: rgba(248, 250, 252, 0.94) !important;
+html[data-theme="light"] .bg-\[\#0B0B0D\]\/90,
+html[data-theme="light"] .bg-\[\#0B0B0D\]\/95 {
+  background-color: rgba(248, 250, 252, 0.96) !important;
 }
 
 html[data-theme="light"] .bg-\[\#111214\],
@@ -133,8 +134,11 @@ html[data-theme="light"] .bg-\[\#111214\]\/95 {
   background-color: #FFFFFF !important;
 }
 
+html[data-theme="light"] .bg-\[\#0D0E10\]\/50,
 html[data-theme="light"] .bg-\[\#0D0E10\]\/70,
 html[data-theme="light"] .bg-\[\#0D0E10\]\/95,
+html[data-theme="light"] .bg-\[\#141518\]\/60,
+html[data-theme="light"] .bg-\[\#141518\]\/90,
 html[data-theme="light"] .bg-\[\#141518\]\/95 {
   background-color: rgba(255, 255, 255, 0.97) !important;
 }
