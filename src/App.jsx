@@ -695,6 +695,56 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [clients, units, orders, reports]);
 
+  const headerAlerts = useMemo(() => {
+    const list = [];
+    schedules.forEach((sch) => {
+      if (sch.ativo === false) return;
+      const st = getExpiryStatus(sch.proximaData);
+      if (st.status === 'vencido' || st.status === 'vence_hoje' || (st.daysRemaining !== null && st.daysRemaining <= 7)) {
+        list.push({
+          id: `agenda-${sch.id}`,
+          category: 'agenda',
+          severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
+          title: `Agenda: ${sch.unidadeNome}`,
+          subtitle: `${sch.clienteNome || 'Unidade'} • ${sch.periodicidade}`,
+          badge: st.label,
+          targetTab: 'agenda'
+        });
+      }
+    });
+
+    sstItems.forEach((item) => {
+      if (!item.dataValidade) return;
+      const st = getExpiryStatus(item.dataValidade);
+      if (st.status === 'vencido' || st.status === 'vence_hoje' || st.status === 'atencao') {
+        list.push({
+          id: `sst-${item.id}`,
+          category: 'sst',
+          severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
+          title: `SST: ${item.titulo || item.categoria}`,
+          subtitle: `${item.unidadeNome || item.clienteNome || 'Unidade'} • ${item.categoria}`,
+          badge: st.label,
+          targetTab: 'units'
+        });
+      }
+    });
+
+    const syncErrs = OfflineStore.getSyncErrors();
+    syncErrs.forEach((err, idx) => {
+      list.push({
+        id: `sync-${err.entity || idx}-${idx}`,
+        category: 'sync',
+        severity: 'warning',
+        title: `Pendência de sincronização (${err.entity || 'dados'})`,
+        subtitle: err.message || 'Toque para tentar sincronizar novamente',
+        badge: 'Offline',
+        action: 'sync'
+      });
+    });
+
+    return list.slice(0, 20);
+  }, [schedules, sstItems, pendingSyncCount]);
+
   const navigatePublicAuth = (nextMode) => {
     setPublicAuthMode(nextMode);
     if (typeof window !== 'undefined') {
@@ -964,56 +1014,6 @@ export default function App() {
     selectedClient === 'all'
       ? sstItems
       : sstItems.filter((x) => !x.clienteNome || x.clienteNome === selectedClient);
-
-  const headerAlerts = useMemo(() => {
-    const list = [];
-    schedules.forEach((sch) => {
-      if (sch.ativo === false) return;
-      const st = getExpiryStatus(sch.proximaData);
-      if (st.status === 'vencido' || st.status === 'vence_hoje' || (st.daysRemaining !== null && st.daysRemaining <= 7)) {
-        list.push({
-          id: `agenda-${sch.id}`,
-          category: 'agenda',
-          severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
-          title: `Agenda: ${sch.unidadeNome}`,
-          subtitle: `${sch.clienteNome || 'Unidade'} • ${sch.periodicidade}`,
-          badge: st.label,
-          targetTab: 'agenda'
-        });
-      }
-    });
-
-    sstItems.forEach((item) => {
-      if (!item.dataValidade) return;
-      const st = getExpiryStatus(item.dataValidade);
-      if (st.status === 'vencido' || st.status === 'vence_hoje' || st.status === 'atencao') {
-        list.push({
-          id: `sst-${item.id}`,
-          category: 'sst',
-          severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
-          title: `SST: ${item.titulo || item.categoria}`,
-          subtitle: `${item.unidadeNome || item.clienteNome || 'Unidade'} • ${item.categoria}`,
-          badge: st.label,
-          targetTab: 'units'
-        });
-      }
-    });
-
-    const syncErrs = OfflineStore.getSyncErrors();
-    syncErrs.forEach((err, idx) => {
-      list.push({
-        id: `sync-${err.entity || idx}-${idx}`,
-        category: 'sync',
-        severity: 'warning',
-        title: `Pendência de sincronização (${err.entity || 'dados'})`,
-        subtitle: err.message || 'Toque para tentar sincronizar novamente',
-        badge: 'Offline',
-        action: 'sync'
-      });
-    });
-
-    return list.slice(0, 20);
-  }, [schedules, sstItems, pendingSyncCount]);
 
   return (
     <div className="flex h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] overflow-hidden font-sans">

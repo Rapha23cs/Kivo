@@ -43,15 +43,13 @@ export default function ReportPrintView({
     };
   }, [report]);
 
-  if (!report) return null;
-
-  const discipline = report.discipline || linkedOrder?.discipline || 'meio_ambiente';
+  const discipline = report?.discipline || linkedOrder?.discipline || 'meio_ambiente';
   const reportMeta = getReportMetaByDiscipline(discipline);
-  const aderencia = report.nivelAderencia || calculateAdherenceLevel(report.indiceConformidade);
+  const aderencia = report?.nivelAderencia || calculateAdherenceLevel(report?.indiceConformidade);
   const accentPreset = getAccentPreset(userProfile?.accentColor);
   const isCustomAccent = accentPreset.id !== 'emerald';
 
-  const formattedDate = report.dataHora
+  const formattedDate = report?.dataHora
     ? new Date(report.dataHora).toLocaleString('pt-BR', {
         day: '2-digit',
         month: '2-digit',
@@ -62,14 +60,16 @@ export default function ReportPrintView({
     : 'Não informada';
 
   const topicBreakdown = useMemo(() => {
-    if (Array.isArray(report.desempenhoTematico) && report.desempenhoTematico.length > 0) {
+    if (Array.isArray(report?.desempenhoTematico) && report.desempenhoTematico.length > 0) {
       return report.desempenhoTematico;
     }
     if (linkedOrder?.checklist?.length) {
       return Object.values(calculateTopicBreakdown(linkedOrder.checklist));
     }
     return [];
-  }, [report.desempenhoTematico, linkedOrder]);
+  }, [report?.desempenhoTematico, linkedOrder]);
+
+  if (!report) return null;
 
   const activePhotos = (report.registrosFotograficos || []).filter(
     (f) => f.incluirNoRelatorio !== false && Boolean(f.fotoUrl)
