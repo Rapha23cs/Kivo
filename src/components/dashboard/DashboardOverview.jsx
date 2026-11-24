@@ -13,22 +13,30 @@ import {
   Award,
   X,
   BarChart3,
-  ShieldAlert
+  ShieldAlert,
+  Calendar,
+  Clock
 } from 'lucide-react';
-import { calculateInspectionSummary, calculateTopicBreakdown, EMSERH_TOPICS } from '../../data/emserhChecklistData';
-import { getOrderStatusMeta } from '../../utils/kivoHelpers';
+import { calculateInspectionSummary, calculateTopicBreakdown } from '../../data/emserhChecklistData';
+import { getExpiryStatus } from '../../supabase/operationsService';
+import { getOrderStatusMeta, sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import Badge from '../common/Badge';
 
 export default function DashboardOverview({
   orders = [],
   reports = [],
   units = [],
+  clients = [],
+  schedules = [],
+  sstItems = [],
   userProfile,
   onOpenOrder,
   onNewOrder,
   onNavigateTab,
   onOpenProfile
 }) {
+  const [topicDiscipline, setTopicDiscipline] = useState('all');
+  const [hoveredPointId, setHoveredPointId] = useState(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     try {
       return localStorage.getItem('kivo_onboarding_dismissed') === '1';
@@ -70,6 +78,14 @@ export default function DashboardOverview({
   const conformityPercentage = totalAvaliados > 0 ? Math.round((totalSim / totalAvaliados) * 100) : 0;
   const finalizedReports = reports.filter((r) => r.status === 'finalizado').length;
 
+  const clientLogoByName = React.useMemo(() => {
+    const map = {};
+    (clients || []).forEach((c) => {
+      if (c?.nome && c?.logoUrl) map[c.nome.toLowerCase()] = c.logoUrl;
+    });
+    return map;
+  }, [clients]);
+
   // Série temporal de conformidade das últimas vistorias + distribuição por severidade
   const timelineSeries = React.useMemo(() => {
     return [...orders]
@@ -79,17 +95,22 @@ export default function DashboardOverview({
       .map((o) => {
         const s = calculateInspectionSummary(o.checklist || []);
         const rawDate = o.scheduledDate || o.createdAt || '';
-        const label = rawDate
-          ? new Date(rawDate.length === 10 ? `${rawDate}T12:00:00` : rawDate).toLocaleDateString('pt-BR', {
-              day: '2-digit',
-              month: '2-digit'
-            })
+        const parsedDate = rawDate
+          ? new Date(rawDate.length === 10 ? `${rawDate}T12:00:00` : rawDate)
+          : null;
+        const label = parsedDate
+          ? parsedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
           : o.id.slice(-4);
+        const fullDate = parsedDate ? parsedDate.toLocaleDateString('pt-BR') : 'Sem data';
         return {
           id: o.id,
+          order: o,
           unit: o.hospitalName || o.id,
+          client: o.clientName || '',
           label,
-          percent: Number(s.percentualConformidade) || 0
+          fullDate,
+          percent: Number(s.percentualConformidade) || 0,
+          desvios: s.desviosCount || 0
         };
       });
   }, [orders]);
@@ -111,16 +132,18 @@ export default function DashboardOverview({
     return { counts, total };
   }, [orders]);
 
-  // Agregação por Temática (11 áreas) e lista de desvios prioritários (Crítico / Grave)
+  // Agregação dinâmica por Temática / NR / Categoria (Meio Ambiente + SST + Modelos)
   const topicRanking = React.useMemo(() => {
     const acc = {};
-    EMSERH_TOPICS.forEach((t) => {
-      acc[t] = { topic: t, sim: 0, nao: 0, avaliados: 0 };
-    });
     orders.forEach((o) => {
+      const disc = o.discipline || 'meio_ambiente';
+      if (topicDiscipline !== 'all' && disc !== topicDiscipline) return;
       const tb = calculateTopicBreakdown(o.checklist || []);
       Object.values(tb).forEach((entry) => {
-        if (!acc[entry.topic]) return;
+        if (!entry?.topic) return;
+        if (!acc[entry.topic]) {
+          acc[entry.topic] = { topic: entry.topic, sim: 0, nao: 0, avaliados: 0 };
+        }
         acc[entry.topic].sim += entry.sim;
         acc[entry.topic].nao += entry.nao;
         acc[entry.topic].avaliados += entry.totalAvaliados;
@@ -133,7 +156,23 @@ export default function DashboardOverview({
         percent: t.avaliados > 0 ? Math.round((t.sim / t.avaliados) * 100) : 100
       }))
       .sort((a, b) => b.nao - a.nao || a.percent - b.percent);
-  }, [orders]);
+  }, [orders, topicDiscipline]);
+
+  const upcomingRadar = React.useMemo(() => {
+    const agendaAlerts = (schedules || [])
+      .filter((s) => s.ativo !== false && s.proximaData)
+      .map((s) => ({ ...s, due: getExpiryStatus(s.proximaData), kind: 'agenda' }))
+      .filter((s) => s.due.status === 'vencido' || s.due.status === 'vence_hoje' || (s.due.daysRemaining !== null && s.due.daysRemaining <= 14))
+      .sort((a, b) => (a.due.daysRemaining ?? 999) - (b.due.daysRemaining ?? 999));
+
+    const sstAlerts = (sstItems || [])
+      .filter((x) => x.dataValidade)
+      .map((x) => ({ ...x, due: getExpiryStatus(x.dataValidade), kind: 'sst' }))
+      .filter((x) => x.due.status === 'vencido' || x.due.status === 'vence_hoje' || x.due.status === 'atencao')
+      .sort((a, b) => (a.due.daysRemaining ?? 999) - (b.due.daysRemaining ?? 999));
+
+    return { agendaAlerts: agendaAlerts.slice(0, 3), sstAlerts: sstAlerts.slice(0, 3) };
+  }, [schedules, sstItems]);
 
   const priorityDeviations = React.useMemo(() => {
     const rank = { 'Crítico': 4, 'Grave': 3, 'Médio': 2, 'Leve': 1 };
@@ -337,7 +376,7 @@ export default function DashboardOverview({
                 cy="18"
                 r="15.5"
                 fill="none"
-                stroke={conformityPercentage >= 80 ? '#2EB88A' : conformityPercentage >= 60 ? '#F59E0B' : '#F43F5E'}
+                stroke={conformityPercentage >= 80 ? 'var(--kivo-accent, #2EB88A)' : conformityPercentage >= 60 ? '#F59E0B' : '#F43F5E'}
                 strokeWidth="3.2"
                 strokeLinecap="round"
                 strokeDasharray={`${Math.min(100, Math.max(0, conformityPercentage)) * 0.974} 100`}
@@ -399,13 +438,30 @@ export default function DashboardOverview({
                   .map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`)
                   .join(' L ')} L ${coords[coords.length - 1].x.toFixed(1)},${(H - padY).toFixed(1)} Z`;
 
+                const activePt = timelineSeries.find((pt) => pt.id === hoveredPointId) || null;
                 return (
-                  <div className="space-y-2">
+                  <div className="space-y-2 relative">
+                    {activePt && (
+                      <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#0D0E10] border border-[#2EB88A]/40 text-[11px] animate-fade-in">
+                        <div className="min-w-0 truncate">
+                          <span className="font-mono font-semibold text-[#34D399]">{activePt.id}</span>
+                          <span className="text-[#71717A] mx-1.5">•</span>
+                          <span className="text-[#F4F4F5] font-medium">{activePt.unit}</span>
+                          <span className="text-[#71717A] ml-1.5 font-mono">({activePt.fullDate})</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 font-mono">
+                          {activePt.desvios > 0 && (
+                            <span className="text-[#FB7185]">{activePt.desvios} desvio(s)</span>
+                          )}
+                          <span className="font-bold text-[#34D399]">{activePt.percent}%</span>
+                        </div>
+                      </div>
+                    )}
                     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-36 overflow-visible">
                       <defs>
                         <linearGradient id="kivoConformityGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#2EB88A" stopOpacity="0.35" />
-                          <stop offset="100%" stopColor="#2EB88A" stopOpacity="0.02" />
+                          <stop offset="0%" style={{ stopColor: 'var(--kivo-accent, #2EB88A)', stopOpacity: 0.35 }} />
+                          <stop offset="100%" style={{ stopColor: 'var(--kivo-accent, #2EB88A)', stopOpacity: 0.02 }} />
                         </linearGradient>
                       </defs>
 
@@ -418,7 +474,7 @@ export default function DashboardOverview({
                               y1={y}
                               x2={W - padX}
                               y2={y}
-                              stroke={tick === 80 ? '#2EB88A' : '#232429'}
+                              stroke={tick === 80 ? 'var(--kivo-accent, #2EB88A)' : '#232429'}
                               strokeOpacity={tick === 80 ? 0.35 : 0.9}
                               strokeDasharray={tick === 80 ? '4 4' : undefined}
                               strokeWidth="1"
@@ -439,39 +495,56 @@ export default function DashboardOverview({
                       <path d={areaPath} fill="url(#kivoConformityGrad)" />
                       <polyline
                         fill="none"
-                        stroke="#2EB88A"
+                        stroke="var(--kivo-accent, #2EB88A)"
                         strokeWidth="2.5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         points={linePoints}
                       />
 
-                      {coords.map((c) => (
-                        <g key={c.id}>
-                          <circle cx={c.x} cy={c.y} r="4.5" fill="#141518" stroke="#34D399" strokeWidth="2.2" />
-                          <text
-                            x={c.x}
-                            y={Math.max(10, c.y - 9)}
-                            textAnchor="middle"
-                            fill="#F4F4F5"
-                            fontSize="9.5"
-                            fontWeight="700"
-                            fontFamily="monospace"
+                      {coords.map((c) => {
+                        const isHovered = hoveredPointId === c.id;
+                        return (
+                          <g
+                            key={c.id}
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredPointId(c.id)}
+                            onMouseLeave={() => setHoveredPointId(null)}
+                            onClick={() => c.order && onOpenOrder?.(c.order)}
                           >
-                            {c.percent}%
-                          </text>
-                          <text
-                            x={c.x}
-                            y={H - 2}
-                            textAnchor="middle"
-                            fill="#71717A"
-                            fontSize="9"
-                            fontFamily="monospace"
-                          >
-                            {c.label}
-                          </text>
-                        </g>
-                      ))}
+                            <circle cx={c.x} cy={c.y} r="12" fill="transparent" />
+                            <circle
+                              cx={c.x}
+                              cy={c.y}
+                              r={isHovered ? '6' : '4.5'}
+                              fill="#141518"
+                              stroke="var(--kivo-accent-light, #34D399)"
+                              strokeWidth={isHovered ? '2.8' : '2.2'}
+                            />
+                            <text
+                              x={c.x}
+                              y={Math.max(10, c.y - 9)}
+                              textAnchor="middle"
+                              fill="#F4F4F5"
+                              fontSize="9.5"
+                              fontWeight="700"
+                              fontFamily="monospace"
+                            >
+                              {c.percent}%
+                            </text>
+                            <text
+                              x={c.x}
+                              y={H - 2}
+                              textAnchor="middle"
+                              fill="#71717A"
+                              fontSize="9"
+                              fontFamily="monospace"
+                            >
+                              {c.label}
+                            </text>
+                          </g>
+                        );
+                      })}
                     </svg>
                   </div>
                 );
@@ -582,7 +655,14 @@ export default function DashboardOverview({
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-semibold text-[#F4F4F5]">{order.id}</span>
                         {order.clientName && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-[#1A1B20] border border-[#27282E] text-[#E4E4E7]">
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-[#1A1B20] border border-[#27282E] text-[#E4E4E7]">
+                            {clientLogoByName[order.clientName.toLowerCase()] && (
+                              <img
+                                src={sanitizeMediaUrl(clientLogoByName[order.clientName.toLowerCase()])}
+                                alt={order.clientName}
+                                className="w-3.5 h-3.5 rounded-sm object-contain bg-white p-[1px]"
+                              />
+                            )}
                             {order.clientName}
                           </span>
                         )}
@@ -663,19 +743,115 @@ export default function DashboardOverview({
         </div>
       </div>
 
+      {/* Radar de Agenda & Vencimentos SST */}
+      {(upcomingRadar.agendaAlerts.length > 0 || upcomingRadar.sstAlerts.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {upcomingRadar.agendaAlerts.length > 0 && (
+            <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#FBBF24]" />
+                  <h3 className="font-semibold text-[#F4F4F5] text-sm">Agenda Próxima / Atrasada</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('agenda')}
+                  className="text-xs text-[#A1A1AA] hover:text-[#F4F4F5] flex items-center gap-1 transition"
+                >
+                  Abrir Agenda <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {upcomingRadar.agendaAlerts.map((sch) => (
+                  <div
+                    key={sch.id}
+                    onClick={() => onNavigateTab('agenda')}
+                    className="bg-[#0E0F12] border border-[#232429] hover:border-[#32343C] rounded-lg px-3 py-2 flex items-center justify-between gap-3 cursor-pointer transition"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-[#F4F4F5] truncate">{sch.unidadeNome}</p>
+                      <p className="text-[11px] text-[#71717A] truncate">
+                        {sch.clienteNome || 'Cliente'} • {sch.periodicidade}
+                      </p>
+                    </div>
+                    <Badge variant={sch.due.variant} size="sm">
+                      {sch.due.label}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {upcomingRadar.sstAlerts.length > 0 && (
+            <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-[#FB7185]" />
+                  <h3 className="font-semibold text-[#F4F4F5] text-sm">Vencimentos SST Críticos</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('units')}
+                  className="text-xs text-[#A1A1AA] hover:text-[#F4F4F5] flex items-center gap-1 transition"
+                >
+                  Ver Inventário <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {upcomingRadar.sstAlerts.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => onNavigateTab('units')}
+                    className="bg-[#0E0F12] border border-[#232429] hover:border-[#32343C] rounded-lg px-3 py-2 flex items-center justify-between gap-3 cursor-pointer transition"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-[#F4F4F5] truncate">{item.titulo || item.categoria}</p>
+                      <p className="text-[11px] text-[#71717A] truncate">
+                        {item.unidadeNome || item.clienteNome || 'Unidade'} • {item.categoria}
+                      </p>
+                    </div>
+                    <Badge variant={item.due.variant} size="sm">
+                      {item.due.label}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Painéis Analíticos Visuais (Conformidade por Temática + Desvios Prioritários) */}
-      {(topicRanking.length > 0 || priorityDeviations.length > 0) && (
+      {(topicRanking.length > 0 || priorityDeviations.length > 0 || orders.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Temáticas com maior incidência de desvios */}
           <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-[#34D399]" />
-                <h3 className="font-semibold text-[#F4F4F5] text-sm">Desempenho por Temática</h3>
+                <h3 className="font-semibold text-[#F4F4F5] text-sm">Desempenho por Temática / NR</h3>
               </div>
-              <span className="text-[11px] text-[#71717A]">
-                {topicRanking.length} área(s) avaliada(s)
-              </span>
+              <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg p-0.5 text-[10px] font-medium">
+                {[
+                  { id: 'all', label: 'Todas' },
+                  { id: 'meio_ambiente', label: 'Ambiental' },
+                  { id: 'seguranca_trabalho', label: 'SST' }
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setTopicDiscipline(opt.id)}
+                    className={`px-2 py-1 rounded-md transition ${
+                      topicDiscipline === opt.id
+                        ? 'bg-[#1E2025] text-[#34D399] font-semibold'
+                        : 'text-[#71717A] hover:text-[#F4F4F5]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {topicRanking.length === 0 ? (

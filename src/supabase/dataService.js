@@ -339,7 +339,8 @@ export const DataService = {
       consultancyName: meta.consultancy_name || '',
       phone: meta.phone || '',
       avatarUrl: meta.avatar_url || '',
-      signatureUrl: meta.signature_url || ''
+      signatureUrl: meta.signature_url || '',
+      accentColor: meta.accent_color || 'emerald'
     };
 
     persistProfileCache(syncedProfile);
@@ -370,7 +371,8 @@ export const DataService = {
               consultancy_name: profile.consultancyName,
               phone: profile.phone,
               avatar_url: profile.avatarUrl || '',
-              signature_url: profile.signatureUrl || ''
+              signature_url: profile.signatureUrl || '',
+              accent_color: profile.accentColor || 'emerald'
             }
           });
           if (error) {

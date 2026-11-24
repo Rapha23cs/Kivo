@@ -11,12 +11,23 @@ import {
   AlertTriangle,
   Building2,
   RefreshCw,
-  X
+  X,
+  List,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import { AGENDA_PERIODICITIES, getExpiryStatus } from '../../supabase/operationsService';
 import { WORK_DISCIPLINES, getDisciplineMeta } from '../../data/workflowsConfig';
+
+const WEEKDAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+function formatMonthTitle(year, monthIdx) {
+  const dt = new Date(year, monthIdx, 1);
+  return dt.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+}
 
 export default function AgendaModule({
   schedules = [],
@@ -30,8 +41,15 @@ export default function AgendaModule({
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [viewMode, setViewMode] = useState('list'); // list | calendar
+  const todayIso = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [selectedDayIso, setSelectedDayIso] = useState(() => new Date().toISOString().split('T')[0]);
 
-  const openBlankSchedule = () => {
+  const openBlankSchedule = (prefillDate = null) => {
     const defaultUnit = units[0] || null;
     setEditingSchedule({
       id: null,
@@ -43,7 +61,7 @@ export default function AgendaModule({
       disciplina: 'meio_ambiente',
       templateId: '',
       periodicidade: 'Mensal',
-      proximaData: new Date().toISOString().split('T')[0],
+      proximaData: typeof prefillDate === 'string' && prefillDate ? prefillDate : todayIso,
       observacoes: '',
       ativo: true
     });
@@ -115,6 +133,33 @@ export default function AgendaModule({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-[#141518] border border-[#232429] rounded-lg p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition ${
+                viewMode === 'list'
+                  ? 'bg-[#1E2025] text-[#F4F4F5] font-semibold'
+                  : 'text-[#71717A] hover:text-[#F4F4F5]'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              Lista
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition ${
+                viewMode === 'calendar'
+                  ? 'bg-[#1E2025] text-[#34D399] font-semibold'
+                  : 'text-[#71717A] hover:text-[#F4F4F5]'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              Calendário
+            </button>
+          </div>
+
           <label className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#141518] border border-[#232429] rounded-lg text-xs text-[#A1A1AA] cursor-pointer">
             <input
               type="checkbox"
@@ -126,7 +171,7 @@ export default function AgendaModule({
           </label>
           <button
             type="button"
-            onClick={openBlankSchedule}
+            onClick={() => openBlankSchedule()}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
           >
             <Plus className="w-4 h-4" />
@@ -155,8 +200,252 @@ export default function AgendaModule({
         </div>
       </div>
 
-      {/* Lista de Programações */}
-      {activeSchedules.length === 0 ? (
+      {/* Lista ou Calendário Mensal de Programações */}
+      {viewMode === 'calendar' ? (
+        (() => {
+          const { year, month } = calendarMonth;
+          const firstDayWeek = new Date(year, month, 1).getDay();
+          const daysInMonth = new Date(year, month + 1, 0).getDate();
+          const cells = [];
+          for (let i = 0; i < firstDayWeek; i += 1) cells.push(null);
+          for (let d = 1; d <= daysInMonth; d += 1) {
+            const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            cells.push({ day: d, iso });
+          }
+
+          const byDate = {};
+          activeSchedules.forEach((s) => {
+            if (!s.proximaData) return;
+            if (!byDate[s.proximaData]) byDate[s.proximaData] = [];
+            byDate[s.proximaData].push(s);
+          });
+
+          const selectedDayItems = byDate[selectedDayIso] || [];
+
+          const shiftMonth = (delta) => {
+            setCalendarMonth((prev) => {
+              const dt = new Date(prev.year, prev.month + delta, 1);
+              return { year: dt.getFullYear(), month: dt.getMonth() };
+            });
+          };
+
+          return (
+            <div className="space-y-4">
+              <div className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#232429] flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => shiftMonth(-1)}
+                      className="p-1.5 bg-[#0D0E10] hover:bg-[#1C1D22] border border-[#232429] rounded-lg text-[#A1A1AA] hover:text-[#F4F4F5] transition"
+                      aria-label="Mês anterior"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <h3 className="text-sm font-semibold text-[#F4F4F5] capitalize min-w-[140px] text-center">
+                      {formatMonthTitle(year, month)}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => shiftMonth(1)}
+                      className="p-1.5 bg-[#0D0E10] hover:bg-[#1C1D22] border border-[#232429] rounded-lg text-[#A1A1AA] hover:text-[#F4F4F5] transition"
+                      aria-label="Próximo mês"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-[10px] text-[#A1A1AA] flex-wrap">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-[#F43F5E]" /> Atrasada/Hoje
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-[#2EB88A]" /> Programada
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setCalendarMonth({ year: now.getFullYear(), month: now.getMonth() });
+                        setSelectedDayIso(todayIso);
+                      }}
+                      className="px-2.5 py-1 bg-[#0D0E10] hover:bg-[#1C1D22] border border-[#232429] rounded-md text-[11px] font-medium text-[#E4E4E7] transition"
+                    >
+                      Hoje
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 border-b border-[#232429] bg-[#111214]">
+                  {WEEKDAYS_PT.map((w) => (
+                    <div
+                      key={w}
+                      className="py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-[#71717A]"
+                    >
+                      {w}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 divide-x divide-y divide-[#1F2024]">
+                  {cells.map((cell, idx) => {
+                    if (!cell) {
+                      return <div key={`empty-${idx}`} className="min-h-[58px] sm:min-h-[86px] bg-[#0D0E10]/50" />;
+                    }
+                    const items = byDate[cell.iso] || [];
+                    const isToday = cell.iso === todayIso;
+                    const isSelected = cell.iso === selectedDayIso;
+
+                    return (
+                      <button
+                        key={cell.iso}
+                        type="button"
+                        onClick={() => setSelectedDayIso(cell.iso)}
+                        className={`min-h-[58px] sm:min-h-[86px] p-1.5 sm:p-2 text-left flex flex-col justify-between transition ${
+                          isSelected
+                            ? 'bg-[#181B20] ring-1 ring-inset ring-[#2EB88A]'
+                            : 'hover:bg-[#17181D]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 w-full">
+                          <span
+                            className={`font-mono text-[11px] font-semibold w-5 h-5 rounded-full flex items-center justify-center ${
+                              isToday
+                                ? 'bg-[#2EB88A] text-[#080A09] font-bold'
+                                : 'text-[#E4E4E7]'
+                            }`}
+                          >
+                            {cell.day}
+                          </span>
+                          {items.length > 0 && (
+                            <span className="sm:hidden font-mono text-[9px] text-[#34D399] font-bold">
+                              {items.length}
+                            </span>
+                          )}
+                        </div>
+
+                        {items.length > 0 && (
+                          <div className="space-y-1 w-full mt-1">
+                            {/* Dots mobile */}
+                            <div className="flex sm:hidden items-center gap-1 flex-wrap">
+                              {items.slice(0, 4).map((sch) => {
+                                const due = getExpiryStatus(sch.proximaData);
+                                const isLate = (due.status === 'vencido' || due.status === 'vence_hoje') && sch.ativo !== false;
+                                return (
+                                  <span
+                                    key={sch.id}
+                                    className={`w-1.5 h-1.5 rounded-full ${isLate ? 'bg-[#F43F5E]' : 'bg-[#2EB88A]'}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            {/* Chips desktop */}
+                            <div className="hidden sm:block space-y-1">
+                              {items.slice(0, 2).map((sch) => {
+                                const due = getExpiryStatus(sch.proximaData);
+                                const isLate = (due.status === 'vencido' || due.status === 'vence_hoje') && sch.ativo !== false;
+                                return (
+                                  <div
+                                    key={sch.id}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded truncate font-medium border ${
+                                      sch.ativo === false
+                                        ? 'bg-[#1A1B20] text-[#71717A] border-[#27282E]'
+                                        : isLate
+                                          ? 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/40'
+                                          : 'bg-[#122620] text-[#34D399] border-[#2EB88A]/35'
+                                    }`}
+                                    title={`${sch.unidadeNome} (${sch.periodicidade})`}
+                                  >
+                                    {sch.unidadeNome}
+                                  </div>
+                                );
+                              })}
+                              {items.length > 2 && (
+                                <span className="text-[9px] font-mono text-[#71717A] block px-1">
+                                  +{items.length - 2} mais
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Detalhe do Dia Selecionado */}
+              <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div>
+                    <h4 className="text-xs font-semibold text-[#F4F4F5] uppercase tracking-wider">
+                      Dia {new Date(`${selectedDayIso}T12:00:00`).toLocaleDateString('pt-BR')}
+                    </h4>
+                    <p className="text-[11px] text-[#71717A]">
+                      {selectedDayItems.length === 0
+                        ? 'Nenhuma vistoria programada para esta data.'
+                        : `${selectedDayItems.length} programação(ões) prevista(s)`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openBlankSchedule(selectedDayIso)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/40 rounded-lg text-xs font-medium transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Agendar neste dia
+                  </button>
+                </div>
+
+                {selectedDayItems.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedDayItems.map((sch) => {
+                      const due = getExpiryStatus(sch.proximaData);
+                      const disc = getDisciplineMeta(sch.disciplina);
+                      return (
+                        <div
+                          key={sch.id}
+                          className="bg-[#0D0E10] border border-[#232429] rounded-lg p-3.5 flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant={due.variant} size="sm">
+                                {sch.ativo === false ? 'Concluída' : due.label}
+                              </Badge>
+                              <span className="text-[10px] font-mono text-[#34D399]">{sch.periodicidade}</span>
+                              <span className="text-[10px] text-[#71717A]">• {disc.shortLabel}</span>
+                            </div>
+                            <p className="text-xs font-semibold text-[#F4F4F5] truncate">{sch.unidadeNome}</p>
+                            <p className="text-[11px] text-[#71717A] truncate">{sch.clienteNome || 'Cliente'}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => onStartOrderFromSchedule?.(sch)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-[11px] font-semibold transition"
+                            >
+                              <Play className="w-3 h-3" />
+                              Iniciar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingSchedule(sch)}
+                              className="p-1.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#A1A1AA] border border-[#2D2F36] rounded-lg transition"
+                              title="Editar"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()
+      ) : activeSchedules.length === 0 ? (
         <div className="bg-[#141518] border border-[#232429] rounded-xl p-12 text-center space-y-3">
           <Calendar className="w-10 h-10 text-[#71717A] mx-auto" />
           <h3 className="text-sm font-semibold text-[#F4F4F5]">Nenhuma vistoria agendada</h3>
@@ -165,7 +454,7 @@ export default function AgendaModule({
           </p>
           <button
             type="button"
-            onClick={openBlankSchedule}
+            onClick={() => openBlankSchedule()}
             className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
           >
             + Programar 1ª Vistoria

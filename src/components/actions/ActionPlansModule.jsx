@@ -12,7 +12,9 @@ import {
   Check,
   Camera,
   ArrowRightLeft,
-  ShieldAlert
+  ShieldAlert,
+  Grid,
+  Columns2
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import ImageLightboxModal from '../common/ImageLightboxModal';
@@ -24,14 +26,26 @@ import { sanitizeMediaUrl, formatDateTimeWatermark, exportCsvRows } from '../../
 
 const ACTION_STATUS_OPTIONS = ['Em Aberto', 'Em Andamento', 'Concluído'];
 
+function getHeatmapCellStyle(score) {
+  if (score >= 20) return 'bg-[#F43F5E]/25 border-[#F43F5E]/60';
+  if (score >= 13) return 'bg-[#F97316]/25 border-[#FB923C]/55';
+  if (score >= 7) return 'bg-[#F59E0B]/20 border-[#FBBF24]/50';
+  if (score >= 4) return 'bg-[#0EA5E9]/20 border-[#38BDF8]/45';
+  return 'bg-[#122620] border-[#2EB88A]/40';
+}
+
 export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOrder }) {
   const { toast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDENTES'); // ALL | PENDENTES | Em Aberto | Em Andamento | Concluído
   const [disciplineFilter, setDisciplineFilter] = useState('ALL');
   const [severityFilter, setSeverityFilter] = useState('ALL');
+  const [showRiskMatrix, setShowRiskMatrix] = useState(false);
+  const [riskCellFilter, setRiskCellFilter] = useState(null);
   const [uploadingKey, setUploadingKey] = useState(null);
   const [expandedKey, setExpandedKey] = useState(null);
+  const [compareMode, setCompareMode] = useState('split'); // split | slider
+  const [sliderPos, setSliderPos] = useState(50);
   const [lightboxState, setLightboxState] = useState({ images: [], index: -1 });
 
   const allActions = useMemo(() => {
@@ -75,6 +89,24 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
     return { total: allActions.length, open, progress, done, critical };
   }, [allActions]);
 
+  const sstMatrixCounts = useMemo(() => {
+    const grid = {};
+    allActions.forEach((entry) => {
+      if (entry.discipline !== 'seguranca_trabalho') return;
+      if (statusFilter === 'PENDENTES' && entry.actionStatus === 'Concluído') return;
+      const p = Math.min(5, Math.max(1, Number(entry.item.riskProbability) || 3));
+      const s = Math.min(5, Math.max(1, Number(entry.item.riskSeverity) || 3));
+      const k = `${p}-${s}`;
+      grid[k] = (grid[k] || 0) + 1;
+    });
+    return grid;
+  }, [allActions, statusFilter]);
+
+  const hasSstActions = useMemo(
+    () => allActions.some((a) => a.discipline === 'seguranca_trabalho'),
+    [allActions]
+  );
+
   const filteredActions = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return allActions.filter((entry) => {
@@ -84,6 +116,12 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
       }
       if (disciplineFilter !== 'ALL' && entry.discipline !== disciplineFilter) return false;
       if (severityFilter !== 'ALL' && entry.classification !== severityFilter) return false;
+      if (riskCellFilter) {
+        if (entry.discipline !== 'seguranca_trabalho') return false;
+        const p = Math.min(5, Math.max(1, Number(entry.item.riskProbability) || 3));
+        const s = Math.min(5, Math.max(1, Number(entry.item.riskSeverity) || 3));
+        if (p !== riskCellFilter.p || s !== riskCellFilter.s) return false;
+      }
       if (!q) return true;
       return (
         entry.order.id.toLowerCase().includes(q) ||
@@ -94,7 +132,7 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
         (entry.item.responsible || '').toLowerCase().includes(q)
       );
     });
-  }, [allActions, searchTerm, statusFilter, disciplineFilter, severityFilter]);
+  }, [allActions, searchTerm, statusFilter, disciplineFilter, severityFilter, riskCellFilter]);
 
   const updateActionItem = (order, itemId, patch) => {
     const updatedChecklist = (order.checklist || []).map((it) =>
@@ -169,14 +207,30 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleExportCsv}
-          disabled={filteredActions.length === 0}
-          className="px-3.5 py-2 bg-[#141518] hover:bg-[#1C1D22] disabled:opacity-40 text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition self-start sm:self-auto"
-        >
-          Exportar Planilha (CSV)
-        </button>
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          {hasSstActions && (
+            <button
+              type="button"
+              onClick={() => setShowRiskMatrix((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 border rounded-lg text-xs font-medium transition ${
+                showRiskMatrix || riskCellFilter
+                  ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40'
+                  : 'bg-[#141518] hover:bg-[#1C1D22] text-[#E4E4E7] border-[#2D2F36]'
+              }`}
+            >
+              <Grid className="w-3.5 h-3.5" />
+              Matriz de Risco 5×5
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={filteredActions.length === 0}
+            className="px-3.5 py-2 bg-[#141518] hover:bg-[#1C1D22] disabled:opacity-40 text-[#E4E4E7] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
+          >
+            Exportar Planilha (CSV)
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -249,6 +303,76 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
           </select>
         </div>
       </div>
+
+      {/* Matriz Visual 5x5 (Heatmap SST) */}
+      {showRiskMatrix && (
+        <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 sm:p-5 space-y-3 animate-fade-in">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-[#F4F4F5]">
+                Matriz de Risco SST (Probabilidade × Severidade)
+              </h3>
+              <p className="text-[11px] text-[#71717A]">
+                Clique em uma célula para filtrar os desvios daquela faixa de risco ({statusFilter === 'PENDENTES' ? 'apenas pendentes' : 'todos'}).
+              </p>
+            </div>
+            {riskCellFilter && (
+              <button
+                type="button"
+                onClick={() => setRiskCellFilter(null)}
+                className="px-2.5 py-1 bg-[#221216] text-[#FB7185] border border-[#F43F5E]/40 rounded-lg text-[11px] font-medium"
+              >
+                Filtro P{riskCellFilter.p} × S{riskCellFilter.s} • Limpar
+              </button>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[340px] space-y-1.5 text-xs">
+              {[5, 4, 3, 2, 1].map((p) => (
+                <div key={p} className="grid grid-cols-6 gap-1.5 items-center">
+                  <span className="font-mono text-[10px] text-[#A1A1AA] font-semibold text-right pr-2">
+                    P{p}
+                  </span>
+                  {[1, 2, 3, 4, 5].map((s) => {
+                    const score = p * s;
+                    const qty = sstMatrixCounts[`${p}-${s}`] || 0;
+                    const isSelected = riskCellFilter?.p === p && riskCellFilter?.s === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() =>
+                          setRiskCellFilter((prev) =>
+                            prev?.p === p && prev?.s === s ? null : { p, s }
+                          )
+                        }
+                        className={`h-11 rounded-lg border flex flex-col items-center justify-center transition ${getHeatmapCellStyle(score)} ${
+                          isSelected ? 'ring-2 ring-[#F4F4F5] scale-[1.02]' : 'hover:opacity-90'
+                        }`}
+                        title={`Probabilidade ${p} × Severidade ${s} = Grau ${score} (${qty} desvio(s))`}
+                      >
+                        <span className="font-mono font-bold text-xs text-[#F4F4F5] leading-none">
+                          {qty}
+                        </span>
+                        <span className="font-mono text-[9px] text-[#A1A1AA] leading-none mt-1">
+                          {score}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              <div className="grid grid-cols-6 gap-1.5 pt-1 text-center font-mono text-[10px] text-[#A1A1AA] font-semibold">
+                <span />
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <span key={s}>S{s}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lista de Planos de Ação */}
       {filteredActions.length === 0 ? (
@@ -348,7 +472,10 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
 
                     <button
                       type="button"
-                      onClick={() => setExpandedKey(isExpanded ? null : entry.key)}
+                      onClick={() => {
+                        setExpandedKey(isExpanded ? null : entry.key);
+                        setSliderPos(50);
+                      }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/40 rounded-lg font-medium transition"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -371,6 +498,101 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
                 {/* Painel Expandido Antes x Depois */}
                 {isExpanded && (
                   <div className="pt-3 border-t border-[#1F2024] space-y-3 animate-fade-in">
+                    {item.evidenceUrl && item.afterPhotoUrl && (
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] text-[#A1A1AA]">Modo de visualização:</span>
+                        <div className="flex items-center bg-[#0D0E10] border border-[#232429] rounded-lg p-0.5 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setCompareMode('split')}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition ${
+                              compareMode === 'split'
+                                ? 'bg-[#1E2025] text-[#F4F4F5] font-semibold'
+                                : 'text-[#71717A] hover:text-[#F4F4F5]'
+                            }`}
+                          >
+                            <Columns2 className="w-3 h-3" />
+                            Lado a Lado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCompareMode('slider')}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition ${
+                              compareMode === 'slider'
+                                ? 'bg-[#1E2025] text-[#34D399] font-semibold'
+                                : 'text-[#71717A] hover:text-[#F4F4F5]'
+                            }`}
+                          >
+                            <ArrowRightLeft className="w-3 h-3" />
+                            Slider Interativo
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {item.evidenceUrl && item.afterPhotoUrl && compareMode === 'slider' ? (
+                      <div className="bg-[#0D0E10] border border-[#232429] rounded-xl p-3 space-y-2.5">
+                        <div className="relative w-full h-56 sm:h-72 rounded-lg overflow-hidden select-none bg-black/40 border border-[#232429]">
+                          <img
+                            src={sanitizeMediaUrl(item.afterPhotoUrl)}
+                            alt="Depois da Correção"
+                            className="absolute inset-0 w-full h-full object-cover"
+                            draggable={false}
+                          />
+                          <div
+                            className="absolute inset-0 overflow-hidden"
+                            style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+                          >
+                            <img
+                              src={sanitizeMediaUrl(item.evidenceUrl)}
+                              alt="Antes (Desvio)"
+                              className="w-full h-full object-cover"
+                              draggable={false}
+                            />
+                          </div>
+
+                          <div
+                            className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_8px_rgba(0,0,0,0.8)] pointer-events-none"
+                            style={{ left: `${sliderPos}%` }}
+                          >
+                            <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#2EB88A] text-[#080A09] border-2 border-white shadow-lg flex items-center justify-center">
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </div>
+                          </div>
+
+                          <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-black/75 text-[#FB7185] border border-[#F43F5E]/40 text-[10px] font-bold uppercase tracking-wider pointer-events-none">
+                            Antes
+                          </span>
+                          <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/75 text-[#34D399] border border-[#2EB88A]/40 text-[10px] font-bold uppercase tracking-wider pointer-events-none">
+                            Depois
+                          </span>
+
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={sliderPos}
+                            onChange={(e) => setSliderPos(Number(e.target.value))}
+                            aria-label="Comparar imagem Antes e Depois"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-[#71717A] gap-2 flex-wrap">
+                          <span>Arraste sobre a foto para comparar Antes e Depois</span>
+                          <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#122620] hover:bg-[#17322A] text-[#34D399] border border-[#2EB88A]/40 rounded-md text-[11px] font-medium cursor-pointer transition">
+                            <Upload className="w-3 h-3" />
+                            <span>{uploadingKey === entry.key ? 'Enviando...' : 'Trocar Foto Depois'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleUploadAfterPhoto(entry, e)}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* ANTES */}
                       <div className="bg-[#0D0E10] border border-[#F43F5E]/30 rounded-xl p-3.5 space-y-2">
@@ -450,6 +672,7 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
                         )}
                       </div>
                     </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                       <div className="sm:col-span-2">

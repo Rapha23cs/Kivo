@@ -14,11 +14,13 @@ import {
   Cloud,
   Upload,
   PenTool,
-  Trash2
+  Trash2,
+  Palette
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
 import { compressImageToDataUrl } from '../../supabase/dataService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
+import { KIVO_ACCENT_PRESETS } from '../../utils/themePalette';
 import { useFeedback } from '../common/FeedbackProvider';
 
 export default function UserProfileModal({
@@ -414,6 +416,42 @@ export default function UserProfileModal({
                     onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                     className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Cor de Destaque White-Label */}
+              <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-[#F4F4F5] flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-[#34D399]" />
+                    Identidade Visual White-Label (Cor de Destaque)
+                  </span>
+                  <span className="text-[10px] text-[#71717A]">Aplicada ao sistema e cabeçalho de laudos</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {KIVO_ACCENT_PRESETS.map((preset) => {
+                    const selected = (profile.accentColor || 'emerald') === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setProfile((prev) => ({ ...prev, accentColor: preset.id }))}
+                        className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition text-[11px] ${
+                          selected
+                            ? 'bg-[#1E2025] border-[#F4F4F5]/40 text-[#F4F4F5] font-semibold'
+                            : 'bg-[#0D0E10] border-[#232429] text-[#A1A1AA] hover:border-[#32343C]'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full shrink-0 border border-white/20 flex items-center justify-center"
+                          style={{ backgroundColor: preset.hex }}
+                        >
+                          {selected && <Check className="w-2.5 h-2.5 text-white drop-shadow" />}
+                        </span>
+                        <span className="truncate">{preset.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

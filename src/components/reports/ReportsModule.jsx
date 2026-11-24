@@ -27,6 +27,7 @@ import { calculateAdherenceLevel } from '../../data/reportTemplateData';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
 import { getDisciplineMeta } from '../../data/workflowsConfig';
 import { ReportService } from '../../supabase/reportService';
+import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
 export default function ReportsModule({
   reports,
@@ -374,8 +375,21 @@ export default function ReportsModule({
                       {rep.unidade || 'Unidade sem nome'}
                     </h3>
                     <p className="text-xs text-[#71717A] flex items-center gap-1.5 mt-0.5">
-                      <Building2 className="w-3.5 h-3.5 shrink-0" />
-                      {rep.clienteNome || 'Cliente'} • {rep.cidade || 'Cidade não informada'}
+                      {(() => {
+                        const logo = (clients || []).find(
+                          (c) => c?.nome && rep.clienteNome && c.nome.toLowerCase() === rep.clienteNome.toLowerCase()
+                        )?.logoUrl;
+                        return logo ? (
+                          <img
+                            src={sanitizeMediaUrl(logo)}
+                            alt={rep.clienteNome}
+                            className="w-4 h-4 rounded object-contain bg-white p-0.5 shrink-0 border border-[#232429]"
+                          />
+                        ) : (
+                          <Building2 className="w-3.5 h-3.5 shrink-0" />
+                        );
+                      })()}
+                      <span className="truncate">{rep.clienteNome || 'Cliente'} • {rep.cidade || 'Cidade não informada'}</span>
                     </p>
                   </div>
 

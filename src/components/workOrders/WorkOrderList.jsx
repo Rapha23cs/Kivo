@@ -16,11 +16,12 @@ import {
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
 import { calculateInspectionSummary } from '../../data/emserhChecklistData';
-import { ORDER_STATUS_META, getOrderStatusMeta } from '../../utils/kivoHelpers';
+import { ORDER_STATUS_META, getOrderStatusMeta, sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import { WORK_DISCIPLINES, getDisciplineMeta } from '../../data/workflowsConfig';
 
 export default function WorkOrderList({
   orders,
+  clients = [],
   onOpenOrder,
   onNewOrder,
   onDeleteOrder,
@@ -355,7 +356,21 @@ export default function WorkOrderList({
                         </td>
                         <td className="py-3.5 px-4">
                           <p className="font-medium text-[#F4F4F5]">{order.hospitalName}</p>
-                          <p className="text-[#71717A] text-[11px]">{order.clientName || 'Cliente não informado'}</p>
+                          <p className="text-[#71717A] text-[11px] flex items-center gap-1.5 mt-0.5">
+                            {(() => {
+                              const logo = (clients || []).find(
+                                (c) => c?.nome && order.clientName && c.nome.toLowerCase() === order.clientName.toLowerCase()
+                              )?.logoUrl;
+                              return logo ? (
+                                <img
+                                  src={sanitizeMediaUrl(logo)}
+                                  alt={order.clientName}
+                                  className="w-3.5 h-3.5 rounded-sm object-contain bg-white p-[1px] shrink-0"
+                                />
+                              ) : null;
+                            })()}
+                            <span>{order.clientName || 'Cliente não informado'}</span>
+                          </p>
                         </td>
                         <td className="py-3.5 px-4 text-[#A1A1AA]">
                           <span className="flex items-center gap-1 text-[11px]">

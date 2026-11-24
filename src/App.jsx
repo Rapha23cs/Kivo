@@ -7,11 +7,12 @@ import { ReportService } from './supabase/reportService';
 import { OfflineStore } from './offline/offlineStore';
 import { SyncEngine } from './offline/syncEngine';
 import { useFeedback } from './components/common/FeedbackProvider';
-import { AppLoadingSkeleton } from './components/common/SkeletonLoader';
+import { AppLoadingSkeleton, ModuleLoadingSkeleton } from './components/common/SkeletonLoader';
 import PwaInstallBanner from './components/common/PwaInstallBanner';
 import { OperationsService, getExpiryStatus } from './supabase/operationsService';
 import { buildSstChecklist } from './data/sstChecklistData';
 import { getDisciplineMeta } from './data/workflowsConfig';
+import { applyAccentCssVariables } from './utils/themePalette';
 
 const DashboardOverview = lazy(() => import('./components/dashboard/DashboardOverview'));
 const WorkOrderList = lazy(() => import('./components/workOrders/WorkOrderList'));
@@ -187,6 +188,13 @@ export default function App() {
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('kivo_sidebar_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [theme, setTheme] = useState(() => {
     try {
@@ -206,6 +214,32 @@ export default function App() {
       // ignora
     }
   }, [theme]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('kivo_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+    } catch {
+      // ignora
+    }
+  }, [sidebarCollapsed]);
+
+  const activeAccentColor = useMemo(() => {
+    if (userProfile?.accentColor) return userProfile.accentColor;
+    try {
+      return localStorage.getItem('kivo_accent') || 'emerald';
+    } catch {
+      return 'emerald';
+    }
+  }, [userProfile?.accentColor]);
+
+  useEffect(() => {
+    applyAccentCssVariables(activeAccentColor, theme);
+    try {
+      localStorage.setItem('kivo_accent', activeAccentColor);
+    } catch {
+      // ignora
+    }
+  }, [activeAccentColor, theme]);
 
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
@@ -836,6 +870,56 @@ export default function App() {
       ? sstItems
       : sstItems.filter((x) => !x.clienteNome || x.clienteNome === selectedClient);
 
+  const headerAlerts = useMemo(() => {
+    const list = [];
+    schedules.forEach((sch) => {
+      if (sch.ativo === false) return;
+      const st = getExpiryStatus(sch.proximaData);
+      if (st.status === 'vencido' || st.status === 'vence_hoje' || (st.daysRemaining !== null && st.daysRemaining <= 7)) {
+        list.push({
+          id: `agenda-${sch.id}`,
+          category: 'agenda',
+          severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
+          title: `Agenda: ${sch.unidadeNome}`,
+          subtitle: `${sch.clienteNome || 'Unidade'} • ${sch.periodicidade}`,
+          badge: st.label,
+          targetTab: 'agenda'
+        });
+      }
+    });
+
+    sstItems.forEach((item) => {
+      if (!item.dataValidade) return;
+      const st = getExpiryStatus(item.dataValidade);
+      if (st.status === 'vencido' || st.status === 'vence_hoje' || st.status === 'atencao') {
+        list.push({
+          id: `sst-${item.id}`,
+          category: 'sst',
+          severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
+          title: `SST: ${item.titulo || item.categoria}`,
+          subtitle: `${item.unidadeNome || item.clienteNome || 'Unidade'} • ${item.categoria}`,
+          badge: st.label,
+          targetTab: 'units'
+        });
+      }
+    });
+
+    const syncErrs = OfflineStore.getSyncErrors();
+    syncErrs.forEach((err, idx) => {
+      list.push({
+        id: `sync-${err.entity || idx}-${idx}`,
+        category: 'sync',
+        severity: 'warning',
+        title: `Pendência de sincronização (${err.entity || 'dados'})`,
+        subtitle: err.message || 'Toque para tentar sincronizar novamente',
+        badge: 'Offline',
+        action: 'sync'
+      });
+    });
+
+    return list.slice(0, 20);
+  }, [schedules, sstItems, pendingSyncCount]);
+
   return (
     <div className="flex h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] overflow-hidden font-sans">
       <Sidebar
@@ -860,11 +944,14 @@ export default function App() {
         onOpenLegalModal={(tab) => setLegalModalTab(tab)}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           clientNames={clientNames}
+          clients={clients}
           selectedClient={selectedClient}
           onSelectClient={setSelectedClient}
           onOpenNewOrder={() => setIsNewOrderModalOpen(true)}
@@ -876,24 +963,29 @@ export default function App() {
           pendingSyncCount={pendingSyncCount}
           isSyncing={isSyncing}
           onSyncNow={handleSyncNow}
+          alerts={headerAlerts}
+          onSelectAlert={(alert) => {
+            if (alert?.action === 'sync') {
+              handleSyncNow();
+            } else if (alert?.targetTab) {
+              setActiveTab(alert.targetTab);
+            }
+          }}
           theme={theme}
           onToggleTheme={toggleTheme}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8">
           <div key={activeTab} className="max-w-7xl mx-auto space-y-6 animate-fade-in">
-            <Suspense
-              fallback={
-                <div className="py-16 text-center text-xs text-[#71717A]">
-                  Carregando módulo...
-                </div>
-              }
-            >
+            <Suspense fallback={<ModuleLoadingSkeleton />}>
               {activeTab === 'dashboard' && (
                 <DashboardOverview
                   orders={displayedOrders}
                   reports={displayedReports}
                   units={displayedUnits}
+                  clients={clients}
+                  schedules={displayedSchedules}
+                  sstItems={displayedSstItems}
                   userProfile={userProfile}
                   onOpenOrder={(order) => setSelectedOrder(order)}
                   onNewOrder={() => {
@@ -908,6 +1000,7 @@ export default function App() {
               {activeTab === 'orders' && (
                 <WorkOrderList
                   orders={displayedOrders}
+                  clients={clients}
                   onOpenOrder={(order) => setSelectedOrder(order)}
                   onNewOrder={() => {
                     setPreselectedUnitForNewOrder(null);

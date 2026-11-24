@@ -21,6 +21,7 @@ import {
 import { calculateTopicBreakdown } from '../../data/emserhChecklistData';
 import { buildPublicReportUrl } from '../../supabase/reportService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
+import { getAccentPreset } from '../../utils/themePalette';
 import QrCodeSvg from '../common/QrCodeSvg';
 
 export default function ReportPrintView({
@@ -47,6 +48,8 @@ export default function ReportPrintView({
   const discipline = report.discipline || linkedOrder?.discipline || 'meio_ambiente';
   const reportMeta = getReportMetaByDiscipline(discipline);
   const aderencia = report.nivelAderencia || calculateAdherenceLevel(report.indiceConformidade);
+  const accentPreset = getAccentPreset(userProfile?.accentColor);
+  const isCustomAccent = accentPreset.id !== 'emerald';
 
   const formattedDate = report.dataHora
     ? new Date(report.dataHora).toLocaleString('pt-BR', {
@@ -237,7 +240,10 @@ export default function ReportPrintView({
           )}
 
           {/* Cabeçalho Institucional */}
-          <div className="border-b-2 border-emerald-700 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div
+            className="border-b-2 border-emerald-700 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+            style={isCustomAccent ? { borderColor: accentPreset.darkHex } : undefined}
+          >
             <div className="flex items-center gap-3">
               <img src="/icon.svg" alt="Logo Kivo" className="w-10 h-10 rounded-lg shrink-0" />
               <div>
@@ -245,7 +251,8 @@ export default function ReportPrintView({
                   {reportMeta.title}
                 </h1>
                 <p className="text-xs font-semibold text-slate-600 mt-1">
-                  Kivo • Cliente: <strong className="text-slate-900">{report.clienteNome || 'Não informado'}</strong>
+                  {userProfile?.consultancyName || 'Kivo'} • Cliente:{' '}
+                  <strong className="text-slate-900">{report.clienteNome || 'Não informado'}</strong>
                 </p>
               </div>
             </div>
@@ -260,7 +267,12 @@ export default function ReportPrintView({
               <div className="text-left sm:text-right text-xs text-slate-600 font-mono space-y-0.5">
                 <p className="font-bold text-slate-900 text-sm">{report.codigoRelatorio}</p>
                 <p>Data/Hora: {formattedDate}</p>
-                <p className="font-sans text-[11px] uppercase font-semibold text-emerald-700">{report.status}</p>
+                <p
+                  className="font-sans text-[11px] uppercase font-semibold text-emerald-700"
+                  style={isCustomAccent ? { color: accentPreset.darkHex } : undefined}
+                >
+                  {report.status}
+                </p>
               </div>
             </div>
           </div>

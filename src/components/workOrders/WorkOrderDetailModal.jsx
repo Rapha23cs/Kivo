@@ -869,8 +869,8 @@ export default function WorkOrderDetailModal({
                 {/* Barra de Filtros Compacta */}
                 <div className="px-4 py-3 bg-[#141518] border-b border-[#232429] space-y-2.5 shrink-0">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-                    {/* Dropdown de Temática para telas menores (< lg) */}
-                    <div className="lg:hidden flex-1">
+                    {/* Dropdown + Chips de Progresso por Temática (< lg) */}
+                    <div className="lg:hidden space-y-2">
                       <select
                         value={selectedTopic}
                         onChange={(e) => setSelectedTopic(e.target.value)}
@@ -888,6 +888,45 @@ export default function WorkOrderDetailModal({
                           );
                         })}
                       </select>
+
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTopic('ALL')}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-medium border whitespace-nowrap transition shrink-0 ${
+                            selectedTopic === 'ALL'
+                              ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40 font-semibold'
+                              : 'bg-[#0D0E10] text-[#A1A1AA] border-[#232429]'
+                          }`}
+                        >
+                          Todas ({checklistItems.length - countPending}/{checklistItems.length})
+                        </button>
+                        {Object.keys(topicBreakdown).map((topic, idx) => {
+                          const b = topicBreakdown[topic];
+                          const answered = (b?.sim || 0) + (b?.nao || 0) + (b?.na || 0);
+                          const total = b?.total || 0;
+                          const done = total > 0 && answered === total;
+                          const isSelected = selectedTopic === topic;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setSelectedTopic(topic)}
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-medium border whitespace-nowrap transition shrink-0 flex items-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/50 font-semibold'
+                                  : done
+                                    ? 'bg-[#0D0E10] text-[#34D399] border-[#2EB88A]/25'
+                                    : 'bg-[#0D0E10] text-[#A1A1AA] border-[#232429]'
+                              }`}
+                            >
+                              {b?.hasDesvios && <span className="w-1.5 h-1.5 rounded-full bg-[#F43F5E]" />}
+                              <span className="truncate max-w-[130px]">{EMSERH_TOPICS_CONFIG[topic]?.shortName || topic}</span>
+                              <span className="font-mono opacity-80">{answered}/{total}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Campo de Busca Rápida */}

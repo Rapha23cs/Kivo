@@ -10,7 +10,9 @@ import {
   X,
   AlertOctagon,
   Calendar,
-  SlidersHorizontal
+  SlidersHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import KivoLogo from '../common/KivoLogo';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
@@ -28,7 +30,9 @@ export default function Sidebar({
   onSignOut,
   onOpenLegalModal,
   isOpen = false,
-  onClose
+  onClose,
+  collapsed = false,
+  onToggleCollapse
 }) {
   const menuItems = [
     {
@@ -106,30 +110,64 @@ export default function Sidebar({
     if (onClose) onClose();
   };
 
-  const sidebarBody = (
+  const renderSidebarBody = (isRail = false) => (
     <>
       <div>
         {/* Brand Logo */}
-        <div className="h-16 flex items-center justify-between gap-3 px-5 border-b border-[#1F2024]">
-          <KivoLogo size="md" subtitle="Vistorias & Relatórios" />
+        <div
+          className={`h-16 flex items-center border-b border-[#1F2024] ${
+            isRail ? 'justify-center px-2' : 'justify-between gap-2 px-4'
+          }`}
+        >
+          <KivoLogo
+            size={isRail ? 'sm' : 'md'}
+            showText={!isRail}
+            subtitle={userProfile?.consultancyName || 'Vistorias & Relatórios'}
+          />
 
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="lg:hidden p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22] transition"
-              aria-label="Fechar menu"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {onToggleCollapse && !isRail && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="hidden lg:inline-flex p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22] transition"
+                title="Recolher menu lateral"
+                aria-label="Recolher menu lateral"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="lg:hidden p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22] transition"
+                aria-label="Fechar menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Navigation Items */}
-        <nav className="p-3 space-y-1 mt-1">
-          <div className="px-3 py-1.5 text-[10px] font-semibold text-[#71717A] uppercase tracking-wider">
-            Menu
-          </div>
+        <nav className={`${isRail ? 'p-2' : 'p-3'} space-y-1 mt-1`}>
+          {isRail && onToggleCollapse ? (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="w-full flex items-center justify-center p-2 mb-1 text-[#71717A] hover:text-[#F4F4F5] hover:bg-[#17181B] rounded-lg transition"
+              title="Expandir menu lateral"
+              aria-label="Expandir menu lateral"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          ) : (
+            <div className="px-3 py-1.5 text-[10px] font-semibold text-[#71717A] uppercase tracking-wider">
+              Menu
+            </div>
+          )}
 
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -140,25 +178,34 @@ export default function Sidebar({
                 key={item.id}
                 type="button"
                 onClick={() => handleSelect(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 lg:py-2 rounded-lg text-xs font-medium transition ${
+                title={isRail ? `${item.label}${item.badge ? ` (${item.badge})` : ''}` : undefined}
+                className={`relative w-full flex items-center ${
+                  isRail ? 'justify-center px-2 py-2.5' : 'justify-between px-3 py-2.5 lg:py-2'
+                } rounded-lg text-xs font-medium transition ${
                   isActive
-                    ? 'bg-[#1E2025] text-[#F4F4F5] font-semibold'
-                    : 'text-[#8E9299] hover:text-[#F4F4F5] hover:bg-[#17181B]'
+                    ? 'bg-[#1E2025] text-[#F4F4F5] font-semibold border border-[#2EB88A]/35'
+                    : 'text-[#8E9299] hover:text-[#F4F4F5] hover:bg-[#17181B] border border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-2.5">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#F4F4F5]' : 'text-[#71717A]'}`} />
-                  <span>{item.label}</span>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#34D399]' : 'text-[#71717A]'}`} />
+                  {!isRail && <span className="truncate">{item.label}</span>}
                 </div>
 
                 {item.badge !== null && item.badge !== undefined && (
-                  <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                      item.badgeColor || 'bg-[#1A1B20] text-[#CBD5E1] border-[#27282E]'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
+                  isRail ? (
+                    <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[#2EB88A] text-[#080A09] font-mono text-[9px] font-bold flex items-center justify-center">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  ) : (
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${
+                        item.badgeColor || 'bg-[#1A1B20] text-[#CBD5E1] border-[#27282E]'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )
                 )}
               </button>
             );
@@ -167,21 +214,28 @@ export default function Sidebar({
       </div>
 
       {/* Bottom Profile & Compliance Footer */}
-      <div className="p-3 border-t border-[#1F2024] space-y-2.5 pb-safe">
-        <div className="bg-[#151619] border border-[#232429] rounded-lg p-3 space-y-1 text-[#A1A1AA] text-[11px]">
-          <div className="flex items-center gap-1.5 text-[#34D399] font-semibold">
-            <Activity className="w-3.5 h-3.5 text-[#2EB88A]" />
-            Auditoria & Conformidade
+      <div className={`${isRail ? 'p-2' : 'p-3'} border-t border-[#1F2024] space-y-2.5 pb-safe`}>
+        {!isRail && (
+          <div className="bg-[#151619] border border-[#232429] rounded-lg p-3 space-y-1 text-[#A1A1AA] text-[11px]">
+            <div className="flex items-center gap-1.5 text-[#34D399] font-semibold">
+              <Activity className="w-3.5 h-3.5 text-[#2EB88A]" />
+              Auditoria & Conformidade
+            </div>
+            <p className="text-[10px] text-[#71717A] leading-tight">
+              Dados sincronizados diretamente na sua conta Supabase.
+            </p>
           </div>
-          <p className="text-[10px] text-[#71717A] leading-tight">
-            Dados sincronizados diretamente na sua conta Supabase.
-          </p>
-        </div>
+        )}
 
-        <div className="px-2.5 py-2 rounded-lg hover:bg-[#18191D] flex items-center justify-between gap-2 transition">
+        <div
+          className={`${
+            isRail ? 'flex-col py-1.5 px-1' : 'px-2.5 py-2 justify-between'
+          } rounded-lg hover:bg-[#18191D] flex items-center gap-2 transition`}
+        >
           <div
             onClick={() => handleSelect('profile')}
-            className="flex items-center gap-2.5 cursor-pointer overflow-hidden flex-1"
+            title={isRail ? `${userProfile?.name || 'Auditor Técnico'} — Perfil RT` : undefined}
+            className={`flex items-center gap-2.5 cursor-pointer overflow-hidden ${isRail ? 'justify-center' : 'flex-1'}`}
           >
             {userProfile?.avatarUrl ? (
               <img
@@ -194,14 +248,16 @@ export default function Sidebar({
                 {userProfile?.name?.charAt(0) || 'A'}
               </div>
             )}
-            <div className="overflow-hidden">
-              <span className="font-semibold text-[#F4F4F5] text-xs block truncate leading-tight">
-                {userProfile?.name || 'Auditor Técnico'}
-              </span>
-              <span className="text-[10px] text-[#71717A] font-mono block truncate">
-                {userProfile?.registry?.split('/')[0] || 'RT Habilitado'}
-              </span>
-            </div>
+            {!isRail && (
+              <div className="overflow-hidden">
+                <span className="font-semibold text-[#F4F4F5] text-xs block truncate leading-tight">
+                  {userProfile?.name || 'Auditor Técnico'}
+                </span>
+                <span className="text-[10px] text-[#71717A] font-mono block truncate">
+                  {userProfile?.registry?.split('/')[0] || 'RT Habilitado'}
+                </span>
+              </div>
+            )}
           </div>
           {onSignOut && (
             <button
@@ -215,7 +271,7 @@ export default function Sidebar({
           )}
         </div>
 
-        {onOpenLegalModal && (
+        {!isRail && onOpenLegalModal && (
           <div className="flex items-center justify-center gap-2 text-[10px] text-[#71717A] pt-0.5">
             <button
               type="button"
@@ -249,8 +305,12 @@ export default function Sidebar({
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="no-print hidden lg:flex w-64 bg-[#111214] border-r border-[#1F2024] flex-col justify-between shrink-0 min-h-[100dvh]">
-        {sidebarBody}
+      <aside
+        className={`no-print hidden lg:flex ${
+          collapsed ? 'w-[72px]' : 'w-64'
+        } bg-[#111214] border-r border-[#1F2024] flex-col justify-between shrink-0 min-h-[100dvh] transition-all duration-200`}
+      >
+        {renderSidebarBody(collapsed)}
       </aside>
 
       {/* Mobile & Tablet Slide-Over Drawer */}
@@ -261,7 +321,7 @@ export default function Sidebar({
             onClick={onClose}
           />
           <aside className="relative z-10 w-72 max-w-[85vw] bg-[#111214] border-r border-[#1F2024] flex flex-col justify-between h-[100dvh] shadow-2xl">
-            {sidebarBody}
+            {renderSidebarBody(false)}
           </aside>
         </div>
       )}

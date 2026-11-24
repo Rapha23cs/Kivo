@@ -2,17 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --kivo-accent: #2EB88A;
+  --kivo-accent-light: #34D399;
+  --kivo-accent-dark: #047857;
+  --kivo-accent-soft: #122620;
+  --kivo-accent-soft-hover: #173028;
+  --kivo-on-accent: #06281E;
+}
+
 @layer base {
   html, body {
-    @apply bg-[#0B0B0D] text-[#F4F4F5] font-sans selection:bg-[#2EB88A] selection:text-[#0B0B0D];
+    @apply bg-[#0B0B0D] text-[#F4F4F5] font-sans;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     letter-spacing: -0.01em;
     -webkit-tap-highlight-color: transparent;
+  }
+  ::selection {
+    background-color: var(--kivo-accent);
+    color: var(--kivo-on-accent);
   }
 }
 
 .pb-safe {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+/* Shimmer para skeleton loaders */
+@keyframes kivoShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.kivo-skeleton {
+  background: linear-gradient(90deg, #16171B 25%, #22242B 50%, #16171B 75%);
+  background-size: 200% 100%;
+  animation: kivoShimmer 1.5s infinite linear;
+}
+
+html[data-theme="light"] .kivo-skeleton {
+  background: linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%);
+  background-size: 200% 100%;
 }
 
 /* Microinterações e animações suaves (sem transform para não criar containing block em modais fixed) */
@@ -243,7 +277,43 @@ html[data-theme="light"] select option.bg-\[\#141518\] {
 /* Preserva texto escuro legível em botões primários esmeralda */
 html[data-theme="light"] .bg-\[\#2EB88A\],
 html[data-theme="light"] .bg-\[\#2EB88A\] * {
-  color: #06281E !important;
+  color: var(--kivo-on-accent, #06281E) !important;
+}
+
+/* White-label Accent Color Overrides (paletas selecionáveis em Perfil RT) */
+html[data-accent]:not([data-accent="emerald"]) .bg-\[\#2EB88A\] {
+  background-color: var(--kivo-accent) !important;
+  color: var(--kivo-on-accent) !important;
+}
+html[data-accent]:not([data-accent="emerald"]) .bg-\[\#2EB88A\] * {
+  color: var(--kivo-on-accent) !important;
+}
+html[data-accent]:not([data-accent="emerald"]) .hover\:bg-\[\#34D399\]:hover {
+  background-color: var(--kivo-accent-light) !important;
+}
+html[data-accent]:not([data-accent="emerald"]) .text-\[\#2EB88A\],
+html[data-accent]:not([data-accent="emerald"]) .text-\[\#34D399\] {
+  color: var(--kivo-accent-light) !important;
+}
+html[data-theme="light"][data-accent]:not([data-accent="emerald"]) .text-\[\#2EB88A\],
+html[data-theme="light"][data-accent]:not([data-accent="emerald"]) .text-\[\#34D399\] {
+  color: var(--kivo-accent-dark) !important;
+}
+html[data-accent]:not([data-accent="emerald"]) .bg-\[\#122620\],
+html[data-accent]:not([data-accent="emerald"]) .bg-\[\#122620\]\/60,
+html[data-accent]:not([data-accent="emerald"]) .bg-\[\#122620\]\/70 {
+  background-color: var(--kivo-accent-soft) !important;
+}
+html[data-accent]:not([data-accent="emerald"]) .hover\:bg-\[\#173028\]:hover,
+html[data-accent]:not([data-accent="emerald"]) .hover\:bg-\[\#17322A\]:hover {
+  background-color: var(--kivo-accent-soft-hover) !important;
+}
+html[data-accent]:not([data-accent="emerald"]) .border-\[\#2EB88A\],
+html[data-accent]:not([data-accent="emerald"]) .border-\[\#2EB88A\]\/30,
+html[data-accent]:not([data-accent="emerald"]) .border-\[\#2EB88A\]\/40,
+html[data-accent]:not([data-accent="emerald"]) .border-\[\#2EB88A\]\/50,
+html[data-accent]:not([data-accent="emerald"]) .focus\:border-\[\#2EB88A\]:focus {
+  border-color: var(--kivo-accent) !important;
 }
 
 @media print {
