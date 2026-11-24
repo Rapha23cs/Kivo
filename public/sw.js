@@ -1,13 +1,35 @@
 const CACHE_VERSION = '__KIVO_CACHE_VERSION__';
 const PRECACHE_ASSETS = /* __KIVO_PRECACHE__ */ [];
 
+function isCacheableResponse(pathname, response) {
+  if (!response || !response.ok) return false;
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+  if (pathname.startsWith('/assets/')) {
+    if (contentType.includes('text/html')) return false;
+    if (pathname.endsWith('.js') && !contentType.includes('javascript') && !contentType.includes('ecmascript')) {
+      return false;
+    }
+    if (pathname.endsWith('.css') && !contentType.includes('text/css')) {
+      return false;
+    }
+  }
+  return true;
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then(async (cache) => {
-      const core = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', ...PRECACHE_ASSETS];
+      const core = ['/index.html', '/manifest.webmanifest', '/icon.svg', ...PRECACHE_ASSETS];
       await Promise.allSettled(
         core.map((url) =>
-          cache.add(new Request(url, { cache: 'reload' })).catch(() => null)
+          fetch(new Request(url, { cache: 'no-store' }))
+            .then((res) => {
+              if (isCacheableResponse(url, res)) {
+                return cache.put(url, res);
+              }
+              return null;
+            })
+            .catch(() => null)
         )
       );
     })
@@ -22,13 +44,16 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key.startsWith('kivo-shell-') && key !== CACHE_VERSION)
-          .map((key) => caches.delete(key))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith('kivo-shell-') && key !== CACHE_VERSION)
+            .map((key) => caches.delete(key))
+        )
       )
-    ).then(() => self.clients.claim())
+      .then(() => self.clients.claim())
   );
 });
 
@@ -42,9 +67,9 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((response) => {
-          const contentType = response.headers.get('content-type') || '';
+          const contentType = (response.headers.get('content-type') || '').toLowerCase();
           if (response && response.ok && contentType.includes('text/html')) {
             const copy = response.clone();
             caches.open(CACHE_VERSION).then((cache) => cache.put('/index.html', copy));
@@ -61,9 +86,14 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(request).then((cached) => {
-      if (cached) return cached;
+      if (cached) {
+        if (isCacheableResponse(url.pathname, cached)) {
+          return cached;
+        }
+        caches.open(CACHE_VERSION).then((cache) => cache.delete(request));
+      }
       return fetch(request).then((response) => {
-        if (response && response.ok) {
+        if (isCacheableResponse(url.pathname, response)) {
           const copy = response.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
         }

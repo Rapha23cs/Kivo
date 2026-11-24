@@ -28,8 +28,8 @@ app.use(express.static(distDir, {
   setHeaders: (res, filePath) => {
     if (filePath.includes(`${path.sep}assets${path.sep}`)) {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    } else if (filePath.endsWith('index.html')) {
-      res.setHeader('Cache-Control', 'no-cache');
+    } else if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
   }
 }));

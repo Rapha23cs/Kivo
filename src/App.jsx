@@ -381,9 +381,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    const onSwUpdate = (ev) => {
-      const registration = ev?.detail?.registration;
-      if (!registration?.waiting) return;
+    let shown = false;
+    const promptUpdate = (registration) => {
+      if (shown || !registration?.waiting) return;
+      shown = true;
       toast.info({
         title: 'Nova versão do Kivo disponível',
         message: 'Atualize a página para carregar as melhorias mais recentes.',
@@ -391,12 +392,26 @@ export default function App() {
         action: {
           label: 'Atualizar agora',
           onClick: () => {
-            registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+            if (registration.waiting) {
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+              setTimeout(() => {
+                window.location.reload();
+              }, 1500);
+            } else {
+              window.location.reload();
+            }
           }
         }
       });
     };
+
+    const onSwUpdate = (ev) => promptUpdate(ev?.detail?.registration);
     window.addEventListener('kivo:sw-update', onSwUpdate);
+    if ('serviceWorker' in navigator && import.meta.env.PROD) {
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        if (reg?.waiting) promptUpdate(reg);
+      }).catch(() => {});
+    }
     return () => window.removeEventListener('kivo:sw-update', onSwUpdate);
   }, [toast]);
 

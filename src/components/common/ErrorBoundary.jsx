@@ -17,6 +17,22 @@ export default class ErrorBoundary extends React.Component {
     console.error('Kivo ErrorBoundary:', error, info?.componentStack);
   }
 
+  async handleHardReload() {
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter((k) => k.startsWith('kivo-shell-')).map((k) => caches.delete(k)));
+      }
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.update().catch(() => {})));
+      }
+    } catch {
+      // ignora
+    }
+    window.location.reload();
+  }
+
   render() {
     if (!this.state.hasError) {
       return this.props.children;
@@ -31,7 +47,7 @@ export default class ErrorBoundary extends React.Component {
           <div className="space-y-1">
             <h1 className="text-base font-bold text-[#F4F4F5]">Ops! Ocorreu uma falha inesperada</h1>
             <p className="text-xs text-[#A1A1AA]">
-              Recarregue a página para restabelecer o aplicativo com segurança.
+              Se houve uma atualização recente do aplicativo, limpe o cache e recarregue.
             </p>
             {this.state.errorMessage && (
               <p className="text-[11px] font-mono text-[#FB7185] bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-2 mt-2 break-words">
@@ -41,10 +57,10 @@ export default class ErrorBoundary extends React.Component {
           </div>
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => this.handleHardReload()}
             className="w-full py-2.5 px-4 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-semibold rounded-lg text-xs transition"
           >
-            Recarregar Kivo
+            Atualizar Cache e Recarregar Kivo
           </button>
         </div>
       </div>
