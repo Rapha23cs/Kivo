@@ -15,20 +15,41 @@ import {
   Sparkles,
   LogIn,
   UserPlus,
-  ExternalLink
+  ExternalLink,
+  Sun,
+  Moon,
+  Menu,
+  X,
+  Lock,
+  Grid,
+  CalendarDays,
+  ArrowRightLeft,
+  ChevronDown,
+  Leaf,
+  HardHat
 } from 'lucide-react';
 import { getSupabaseClient, isSupabaseConfigured } from '../../supabase/supabaseConfig';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'suporte@kivo.com.br';
 const SUPPORT_WHATSAPP = (import.meta.env.VITE_SUPPORT_WHATSAPP || '').replace(/\D/g, '');
 
-export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) {
+export default function LandingPage({
+  onOpenLogin,
+  onOpenSignup,
+  onOpenLegal,
+  theme = 'dark',
+  onToggleTheme
+}) {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [empresa, setEmpresa] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [sending, setSending] = useState(false);
-  const [sentStatus, setSentStatus] = useState(null); // { type: 'success' | 'error', text: string }
+  const [sentStatus, setSentStatus] = useState(null);
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState('checklist'); // checklist | sst | portal
+  const [openFaqIdx, setOpenFaqIdx] = useState(0);
 
   const handleSubmitContact = async (e) => {
     e.preventDefault();
@@ -89,52 +110,83 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
   const features = [
     {
       icon: ClipboardCheck,
-      title: 'Checklist Ambiental Estruturado',
-      desc: '63 pontos distribuídos em 11 temáticas normativas (RDC-50, NR-32, PGRSS e NR-20) com apuração automática de conformidade e Regra 6.'
+      title: 'Checklists Ambientais & SST',
+      desc: '63 pontos ambientais em 11 temáticas (RDC-50, PGRSS, NR-32) e checklists modulares de SST por NR (NR-01 a NR-35), além de modelos personalizados.'
     },
     {
       icon: WifiOff,
       title: 'Modo Offline Real em Campo',
-      desc: 'Continue vistoriando em subsolos, áreas industriais ou hospitais sem sinal. Tudo é salvo em IndexedDB e sincronizado ao reconectar.'
+      desc: 'Audite em subsolos, casas de máquinas ou hospitais sem internet. As respostas e fotos ficam em IndexedDB e sincronizam automaticamente ao reconectar.'
     },
     {
       icon: Camera,
-      title: 'Evidências com Carimbo Técnico',
-      desc: 'Compressão automática das fotos e carimbo de data, hora e referência da unidade diretamente na imagem para auditoria.'
+      title: 'Evidências & Antes × Depois',
+      desc: 'Compressão automática de fotos, remoção de EXIF, carimbo técnico com unidade/data/hora e comparador visual interativo Antes × Depois nos Planos de Ação.'
     },
     {
       icon: FileBarChart2,
-      title: 'Laudos Executivos em PDF',
-      desc: 'Gere relatórios completos com fachada, 8 indicadores consolidados, tabela de desvios, galeria fotográfica e nível de aderência.'
+      title: 'Laudos A4 & Consolidado por Rede',
+      desc: 'Exporte laudos executivos em PDF A4 prontos para diretoria ou gere o consolidado comparativo entre todas as unidades de um mesmo cliente.'
     },
     {
-      icon: QrCode,
-      title: 'Portal Público por Token & QR Code',
-      desc: 'Compartilhe um link somente leitura exclusivo com o cliente ou gestor da unidade, com validação via QR Code no documento.'
+      icon: CalendarDays,
+      title: 'Agenda Recorrente & Vencimentos SST',
+      desc: 'Calendário mensal com recorrência automática por unidade e controle de validade para AVCB, extintores, EPIs, treinamentos NR e laudos.'
     },
     {
       icon: ShieldCheck,
-      title: 'Segurança Multi-Auditor (RLS)',
-      desc: 'Cada responsável técnico opera em ambiente isolado por conta, com Row-Level Security no Postgres e políticas privadas de mídia.'
+      title: 'Portal QR com PIN & 2FA',
+      desc: 'Compartilhe o laudo somente leitura via QR Code com prazo de expiração e código PIN opcional, além de 2FA (TOTP) e RLS multi-auditor.'
     }
   ];
 
   const steps = [
     {
       num: '01',
-      title: 'Cadastre Clientes & Unidades',
-      desc: 'Organize contratos, regionais, municípios e histórico de auditorias por estabelecimento atendido.'
+      title: 'Organize Clientes, Unidades & Agenda',
+      desc: 'Cadastre contratos, regionais, logotipos, cronogramas recorrentes e o inventário de vencimentos SST em um único painel.'
     },
     {
       num: '02',
-      title: 'Execute a Vistoria no Celular',
-      desc: 'Preencha o checklist mesmo offline, anexe fotos com legenda e registre desvios com prazo e responsável.'
+      title: 'Execute a Vistoria em Campo',
+      desc: 'Preencha o checklist no celular mesmo offline, classifique desvios (ou calcule risco na Matriz 5×5) e registre fotos carimbadas.'
     },
     {
       num: '03',
-      title: 'Publique PDF e Link Validado',
-      desc: 'Exporte o laudo técnico em PDF ou ative o link público com QR Code para acompanhamento direto pelo cliente.'
+      title: 'Publique PDF A4 & Portal Validado',
+      desc: 'Conclua o relatório técnico em segundos, baixe o PDF executivo ou envie o link protegido por PIN e QR Code para o gestor acompanhar.'
     }
+  ];
+
+  const faqs = [
+    {
+      q: 'O Kivo funciona mesmo em áreas sem internet (subsolos, centrais ou zonas rurais)?',
+      a: 'Sim. O aplicativo opera como PWA offline-first com armazenamento local em IndexedDB e fila inteligente de sincronização. Assim que a conexão retorna, vistorias, relatórios, unidades e fotos pendentes sobem automaticamente.'
+    },
+    {
+      q: 'O cliente precisa criar uma conta para ver o relatório enviado?',
+      a: 'Não. Ao ativar o Portal Público no relatório, você gera um link exclusivo e QR Code com validade configurável (7, 30 ou 90 dias) e código PIN opcional para o gestor visualizar e imprimir o laudo.'
+    },
+    {
+      q: 'Posso usar checklists próprios além dos padrões Ambiental e SST?',
+      a: 'Sim. No editor de Modelos de Checklist você cria formulários personalizados por disciplina e pode vinculá-los tanto às novas vistorias quanto às visitas recorrentes da Agenda.'
+    },
+    {
+      q: 'Como os dados das empresas e fotos ficam protegidos?',
+      a: 'Cada conta opera isolada no PostgreSQL via Row-Level Security (RLS), as imagens ficam em bucket privado acessado por URLs assinadas, há suporte a 2FA por aplicativo autenticador e registro imutável de auditoria.'
+    },
+    {
+      q: 'Consigo comparar a evolução de várias unidades de um mesmo cliente?',
+      a: 'Sim. O módulo de Relatórios oferece a visão Consolidada por Rede, agrupando médias de conformidade, maturidade e volume de desvios por contrato/cliente.'
+    }
+  ];
+
+  const navLinks = [
+    { href: '#fluxos', label: 'Ambiental & SST' },
+    { href: '#recursos', label: 'Recursos' },
+    { href: '#fluxo', label: 'Como funciona' },
+    { href: '#faq', label: 'Dúvidas' },
+    { href: '#contato', label: 'Contato' }
   ];
 
   return (
@@ -142,7 +194,7 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 bg-[#0B0B0D]/90 backdrop-blur-md border-b border-[#1F2024]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <a href="#topo" className="flex items-center gap-2.5">
+          <a href="#topo" className="flex items-center gap-2.5 shrink-0">
             <img src="/icon.svg" alt="Logo Kivo" className="w-9 h-9 rounded-xl" />
             <div>
               <span className="font-bold text-base tracking-tight text-[#F4F4F5] block leading-none">
@@ -155,12 +207,30 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
           </a>
 
           <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-[#A1A1AA]">
-            <a href="#recursos" className="hover:text-[#F4F4F5] transition">Recursos</a>
-            <a href="#fluxo" className="hover:text-[#F4F4F5] transition">Como funciona</a>
-            <a href="#contato" className="hover:text-[#F4F4F5] transition">Contato</a>
+            {navLinks.map((lnk) => (
+              <a key={lnk.href} href={lnk.href} className="hover:text-[#F4F4F5] transition">
+                {lnk.label}
+              </a>
+            ))}
           </nav>
 
           <div className="flex items-center gap-2">
+            {onToggleTheme && (
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className="p-2 rounded-lg bg-[#141518] hover:bg-[#1C1D22] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5] transition"
+                title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+                aria-label="Alternar tema"
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-4 h-4 text-[#34D399]" />
+                ) : (
+                  <Sun className="w-4 h-4 text-[#FBBF24]" />
+                )}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onOpenLogin}
@@ -177,31 +247,76 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
               <UserPlus className="w-3.5 h-3.5" />
               <span>Criar Conta</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((v) => !v)}
+              className="md:hidden p-2 rounded-lg bg-[#141518] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5]"
+              aria-label="Abrir navegação"
+            >
+              {mobileNavOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Nav Menu */}
+        {mobileNavOpen && (
+          <div className="md:hidden border-t border-[#1F2024] bg-[#111214] px-4 py-3 space-y-2 animate-fade-in">
+            <div className="flex flex-wrap gap-2">
+              {navLinks.map((lnk) => (
+                <a
+                  key={lnk.href}
+                  href={lnk.href}
+                  onClick={() => setMobileNavOpen(false)}
+                  className="px-3 py-1.5 rounded-lg bg-[#141518] border border-[#232429] text-xs text-[#E4E4E7]"
+                >
+                  {lnk.label}
+                </a>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileNavOpen(false);
+                onOpenSignup();
+              }}
+              className="w-full py-2 rounded-lg bg-[#2EB88A] text-[#09090B] font-semibold text-xs flex items-center justify-center gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Criar Conta Gratuita
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}
       <section id="topo" className="relative overflow-hidden border-b border-[#1F2024]">
         <div
-          className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-[380px] rounded-full opacity-20 blur-3xl"
+          className="pointer-events-none absolute -top-36 left-1/2 -translate-x-1/2 w-[780px] h-[420px] rounded-full opacity-20 blur-3xl"
           style={{ background: 'radial-gradient(circle, #2EB88A 0%, transparent 70%)' }}
         />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: 'radial-gradient(#F4F4F5 1px, transparent 1px)',
+            backgroundSize: '28px 28px'
+          }}
+        />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-7 space-y-6">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+          <div className="lg:col-span-6 space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#122620] border border-[#2EB88A]/35 text-[#34D399] text-xs font-medium">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Meio Ambiente (Ativo) &amp; Segurança do Trabalho (Em breve)</span>
+              <span>Meio Ambiente &amp; Segurança do Trabalho (SST)</span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#F4F4F5] leading-[1.12]">
+            <h1 className="text-3xl sm:text-4xl lg:text-[44px] font-extrabold tracking-tight text-[#F4F4F5] leading-[1.12]">
               Da vistoria em campo ao{' '}
               <span className="text-[#34D399]">laudo técnico validado</span>, mesmo sem internet.
             </h1>
 
-            <p className="text-sm sm:text-base text-[#A1A1AA] leading-relaxed max-w-2xl">
-              Padronize vistorias de Meio Ambiente e Segurança do Trabalho em um fluxo único: inicie a vistoria, preencha o checklist em campo e vincule para emitir o relatório PDF e link público.
+            <p className="text-sm sm:text-base text-[#A1A1AA] leading-relaxed max-w-xl">
+              Padronize auditorias ambientais e de SST em uma plataforma única: execute checklists offline no celular, gerencie planos 5W2H com Antes × Depois e publique laudos em PDF com QR Code e PIN.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -221,64 +336,260 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
               </a>
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 text-xs text-[#A1A1AA]">
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-[#34D399]" /> Offline-first (PWA)
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-[#34D399]" /> Dados isolados (LGPD + RLS)
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-[#34D399]" /> Exportação PDF &amp; CSV
-              </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 text-[11px]">
+              {[
+                { val: '63 + 7 NRs', label: 'Checklists Prontos' },
+                { val: 'Offline', label: 'IndexedDB + PWA' },
+                { val: 'Matriz 5×5', label: 'Risco & 5W2H' },
+                { val: 'PDF + QR', label: 'Portal com PIN' }
+              ].map((stat) => (
+                <div key={stat.val} className="bg-[#141518]/90 border border-[#232429] rounded-xl px-3 py-2.5">
+                  <span className="font-mono font-bold text-[#34D399] block text-xs">{stat.val}</span>
+                  <span className="text-[#71717A] text-[10px] block mt-0.5">{stat.label}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Visual System Preview Card */}
-          <div className="lg:col-span-5">
-            <div className="bg-[#141518] border border-[#27282E] rounded-2xl p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-[#1F2024] pb-3">
+          {/* Interactive SaaS App Preview */}
+          <div className="lg:col-span-6">
+            <div className="bg-[#111214] border border-[#27282E] rounded-2xl shadow-2xl overflow-hidden">
+              {/* Mock Window Bar */}
+              <div className="px-4 py-3 bg-[#141518] border-b border-[#232429] flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-[#34D399]" />
-                  <span className="text-xs font-semibold text-[#F4F4F5]">Hospital Regional • Unidade Norte</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E]/70" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]/70" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2EB88A]/80" />
+                  <span className="ml-2 font-mono text-[10px] text-[#71717A]">kivo.app/painel</span>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
-                  FINALIZADO
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />
+                  Nuvem &amp; Offline Ready
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#0D0E10] border border-[#232429] rounded-xl p-3">
-                  <span className="text-[10px] uppercase text-[#71717A] font-semibold block">Conformidade</span>
-                  <span className="text-2xl font-black font-mono text-[#34D399] mt-0.5 block">92.1%</span>
-                  <span className="text-[10px] text-[#A1A1AA]">Alta Aderência Ambiental</span>
-                </div>
-                <div className="bg-[#0D0E10] border border-[#232429] rounded-xl p-3">
-                  <span className="text-[10px] uppercase text-[#71717A] font-semibold block">Itens Avaliados</span>
-                  <span className="text-2xl font-black font-mono text-[#F4F4F5] mt-0.5 block">63/63</span>
-                  <span className="text-[10px] text-[#A1A1AA]">11 temáticas normativas</span>
-                </div>
+              {/* Interactive Tabs */}
+              <div className="px-4 pt-3 bg-[#141518]/60 border-b border-[#1F2024] flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                {[
+                  { id: 'checklist', label: 'Checklist em Campo' },
+                  { id: 'sst', label: 'SST & Matriz 5×5' },
+                  { id: 'portal', label: 'Laudo PDF & QR' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPreviewTab(tab.id)}
+                    className={`px-3 py-2 border-b-2 font-medium whitespace-nowrap transition ${
+                      previewTab === tab.id
+                        ? 'border-[#2EB88A] text-[#34D399] font-semibold'
+                        : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="bg-[#0D0E10] border border-[#232429] rounded-xl p-3.5 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[#E4E4E7] font-medium">Sincronização &amp; Portal</span>
-                  <span className="text-[10px] font-mono text-[#34D399]">QR Code Ativo</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-[#1C1D22] overflow-hidden">
-                  <div className="h-full w-[92%] bg-[#2EB88A] rounded-full" />
-                </div>
-                <p className="text-[11px] text-[#71717A]">
-                  Laudo emitido com 18 registros fotográficos e link público de conferência.
-                </p>
+              {/* Tab Content */}
+              <div className="p-5 space-y-4 min-h-[270px]">
+                {previewTab === 'checklist' && (
+                  <div className="space-y-3.5 animate-fade-in">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Building2 className="w-4 h-4 text-[#34D399] shrink-0" />
+                        <span className="text-xs font-semibold text-[#F4F4F5] truncate">
+                          Hospital Regional • Unidade Norte
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] text-[#34D399] bg-[#122620] px-2 py-0.5 rounded border border-[#2EB88A]/30 shrink-0">
+                        92.1% Conforme
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono text-[#34D399]">#14 • Gestão de Resíduos (PGRSS)</span>
+                          <p className="text-xs text-[#E4E4E7] mt-0.5">
+                            Abrigo externo de RSS identificado, trancado e com contenção íntegra?
+                          </p>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-md bg-[#122620] text-[#34D399] border border-[#2EB88A]/40 font-mono text-[11px] font-bold shrink-0">
+                          SIM
+                        </span>
+                      </div>
+
+                      <div className="bg-[#141518] border border-[#F43F5E]/35 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-mono text-[#FB7185]">#27 • Produtos Químicos (FISPQ)</span>
+                            <p className="text-xs text-[#E4E4E7] mt-0.5">
+                              FISPQs atualizadas e bacia de contenção disponível no almoxarifado?
+                            </p>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-md bg-[#221216] text-[#FB7185] border border-[#F43F5E]/40 font-mono text-[11px] font-bold shrink-0">
+                            NÃO
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-[#A1A1AA] bg-[#0D0E10] rounded-lg px-2.5 py-1.5 border border-[#232429]">
+                          <span>Foto carimbada • 24/11 14:22</span>
+                          <span className="text-[#FB7185] font-semibold">Prazo: 48h (Grave)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {previewTab === 'sst' && (
+                  <div className="space-y-3.5 animate-fade-in">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-[#F4F4F5] flex items-center gap-1.5">
+                        <Grid className="w-4 h-4 text-[#FBBF24]" />
+                        Matriz de Risco 5×5 &amp; Plano 5W2H
+                      </span>
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/30">
+                        NR-06 • NR-10 • NR-23 • NR-35
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[10px]">
+                      {[
+                        { score: 5, qty: 0, cls: 'bg-[#0EA5E9]/20 border-[#38BDF8]/40' },
+                        { score: 10, qty: 1, cls: 'bg-[#F59E0B]/20 border-[#FBBF24]/45' },
+                        { score: 15, qty: 2, cls: 'bg-[#F97316]/25 border-[#FB923C]/50' },
+                        { score: 20, qty: 1, cls: 'bg-[#F43F5E]/25 border-[#F43F5E]/60' },
+                        { score: 25, qty: 0, cls: 'bg-[#F43F5E]/30 border-[#F43F5E]/70' }
+                      ].map((cell) => (
+                        <div key={cell.score} className={`rounded-lg border py-2 ${cell.cls}`}>
+                          <span className="font-bold text-[#F4F4F5] block">{cell.qty}</span>
+                          <span className="text-[9px] text-[#A1A1AA]">R{cell.score}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <span className="inline-flex items-center gap-1 text-[10px] text-[#34D399] font-semibold">
+                          <ArrowRightLeft className="w-3 h-3" /> Comparador Antes × Depois
+                        </span>
+                        <p className="text-[#E4E4E7] mt-0.5 truncate">
+                          Quadro elétrico sinalizado e bloqueado (NR-10)
+                        </p>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-[#122620] text-[#34D399] border border-[#2EB88A]/35 text-[10px] font-semibold shrink-0">
+                        Concluído
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {previewTab === 'portal' && (
+                  <div className="space-y-3.5 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-mono text-[11px] text-[#34D399] block">REL-OS-2026-042</span>
+                        <h4 className="text-xs font-bold text-[#F4F4F5]">Laudo Técnico Executivo A4</h4>
+                      </div>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/35 text-[10px] font-semibold">
+                        <Lock className="w-3 h-3" /> PIN + 30 dias
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5 text-center">
+                      <div className="bg-[#141518] border border-[#232429] rounded-xl p-2.5">
+                        <span className="text-[10px] text-[#71717A] block">Índice</span>
+                        <span className="font-mono font-bold text-sm text-[#34D399]">92.1%</span>
+                      </div>
+                      <div className="bg-[#141518] border border-[#232429] rounded-xl p-2.5">
+                        <span className="text-[10px] text-[#71717A] block">Aderência</span>
+                        <span className="font-semibold text-xs text-[#F4F4F5]">Alta</span>
+                      </div>
+                      <div className="bg-[#141518] border border-[#232429] rounded-xl p-2.5">
+                        <span className="text-[10px] text-[#71717A] block">Fotos</span>
+                        <span className="font-mono font-bold text-sm text-[#F4F4F5]">18</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-white text-[#09090B] flex items-center justify-center shrink-0">
+                          <QrCode className="w-6 h-6" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-semibold text-[#F4F4F5] block truncate">Portal Público do Cliente</span>
+                          <span className="text-[10px] text-[#71717A] block truncate">
+                            Validado por token UUID + expiração automática
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-[#34D399] shrink-0">PDF A4</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* Dual Disciplines Comparison */}
+      <section id="fluxos" className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-6 space-y-8">
+        <div className="max-w-2xl space-y-2">
+          <span className="text-xs font-mono uppercase tracking-widest text-[#34D399]">Dois Fluxos Integrados</span>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#F4F4F5] tracking-tight">
+            Meio Ambiente e Segurança do Trabalho em uma única plataforma
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-[#141518] border border-[#2EB88A]/30 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-[#122620] text-[#34D399] border border-[#2EB88A]/35">
+                  <Leaf className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#F4F4F5]">Meio Ambiente</h3>
+                  <span className="text-[11px] text-[#34D399] font-mono">63 itens • 11 temáticas normativas</span>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
+                ATIVO
+              </span>
+            </div>
+            <ul className="space-y-2 text-xs text-[#A1A1AA]">
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#34D399] shrink-0" /> Resíduos (PGRSS), Produtos Químicos (FISPQ), Água, Efluentes e Emissões</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#34D399] shrink-0" /> Apuração automática da Regra 6 (Não = anomalia + prazo + responsável)</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#34D399] shrink-0" /> 56 slots fotográficos padrão + fotos extras e Consolidado por Rede</li>
+            </ul>
+          </div>
+
+          <div className="bg-[#141518] border border-[#F59E0B]/30 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/35">
+                  <HardHat className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#F4F4F5]">Segurança do Trabalho (SST)</h3>
+                  <span className="text-[11px] text-[#FBBF24] font-mono">Checklists por NR + Matriz 5×5</span>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/30">
+                ATIVO
+              </span>
+            </div>
+            <ul className="space-y-2 text-xs text-[#A1A1AA]">
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#FBBF24] shrink-0" /> Módulos NR-01, NR-06, NR-10, NR-12, NR-23, NR-24 e NR-35 combináveis</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#FBBF24] shrink-0" /> Matriz de Risco 5×5 (Probabilidade × Severidade) clicável nos Planos de Ação</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#FBBF24] shrink-0" /> Inventário de Vencimentos SST (AVCB, extintores, CAs de EPIs e treinamentos)</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
-      <section id="recursos" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 space-y-10">
+      <section id="recursos" className="max-w-6xl mx-auto px-4 sm:px-6 py-14 space-y-10">
         <div className="max-w-2xl space-y-2">
           <span className="text-xs font-mono uppercase tracking-widest text-[#34D399]">Recursos Operacionais</span>
           <h2 className="text-2xl sm:text-3xl font-bold text-[#F4F4F5] tracking-tight">
@@ -295,7 +606,7 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
             return (
               <div
                 key={feat.title}
-                className="bg-[#141518] border border-[#232429] hover:border-[#2EB88A]/40 rounded-2xl p-5 space-y-3 transition"
+                className="bg-[#141518] border border-[#232429] hover:border-[#2EB88A]/45 rounded-2xl p-5 space-y-3 transition"
               >
                 <div className="w-10 h-10 rounded-xl bg-[#122620] border border-[#2EB88A]/30 text-[#34D399] flex items-center justify-center">
                   <Icon className="w-5 h-5" />
@@ -332,8 +643,48 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
         </div>
       </section>
 
+      {/* FAQ Accordion */}
+      <section id="faq" className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-6 space-y-6">
+        <div className="max-w-2xl space-y-2">
+          <span className="text-xs font-mono uppercase tracking-widest text-[#34D399]">Dúvidas Frequentes</span>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#F4F4F5] tracking-tight">
+            Tudo o que sua equipe técnica precisa saber
+          </h2>
+        </div>
+
+        <div className="space-y-2.5">
+          {faqs.map((item, idx) => {
+            const isOpen = openFaqIdx === idx;
+            return (
+              <div
+                key={item.q}
+                className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden"
+              >
+                <button
+                  type="button"
+                  onClick={() => setOpenFaqIdx(isOpen ? -1 : idx)}
+                  className="w-full px-5 py-4 flex items-center justify-between gap-4 text-left text-xs sm:text-sm font-semibold text-[#F4F4F5] hover:bg-[#18191D] transition"
+                >
+                  <span>{item.q}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-[#34D399] shrink-0 transition-transform ${
+                      isOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+                {isOpen && (
+                  <div className="px-5 pb-4 text-xs text-[#A1A1AA] leading-relaxed border-t border-[#1F2024] pt-3">
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Contact / Demo Request */}
-      <section id="contato" className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+      <section id="contato" className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start bg-[#141518] border border-[#232429] rounded-2xl p-6 sm:p-8">
           <div className="lg:col-span-5 space-y-4">
             <span className="text-xs font-mono uppercase tracking-widest text-[#34D399]">Contato Direto</span>
@@ -341,7 +692,7 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
               Implante o Kivo na sua equipe técnica
             </h2>
             <p className="text-xs sm:text-sm text-[#A1A1AA] leading-relaxed">
-              Quer apresentar o sistema para sua diretoria, personalizar unidades ou tirar dúvidas sobre implantação e LGPD? Fale conosco pelo formulário ou pelos canais diretos.
+              Quer apresentar o sistema para sua diretoria, personalizar modelos ou tirar dúvidas sobre implantação e LGPD? Fale conosco pelo formulário ou pelos canais diretos.
             </p>
 
             <div className="space-y-2.5 pt-2 text-xs">
@@ -463,7 +814,7 @@ export default function LandingPage({ onOpenLogin, onOpenSignup, onOpenLegal }) 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#71717A]">
           <div className="flex items-center gap-2">
             <img src="/icon.svg" alt="Kivo" className="w-5 h-5 rounded" />
-            <span>Kivo • Inspeções &amp; Relatórios Ambientais</span>
+            <span>Kivo • Vistorias &amp; Relatórios Técnicos (Ambiental &amp; SST)</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-4">

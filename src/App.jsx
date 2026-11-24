@@ -900,6 +900,8 @@ export default function App() {
       <Suspense fallback={<AppLoadingSkeleton />}>
         <LoginScreen
           initialMode="recovery"
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onRecoveryComplete={() => {
             setRecoveryMode(false);
             loadAllData();
@@ -915,6 +917,8 @@ export default function App() {
         {publicAuthMode || mfaRequired ? (
           <LoginScreen
             initialMode={mfaRequired ? 'mfa' : publicAuthMode}
+            theme={theme}
+            onToggleTheme={toggleTheme}
             onBackToLanding={() => navigatePublicAuth(null)}
             onLoginSuccess={(nextSession) => {
               if (nextSession?.user) {
@@ -929,9 +933,11 @@ export default function App() {
           />
         ) : (
           <LandingPage
+            theme={theme}
+            onToggleTheme={toggleTheme}
             onOpenLogin={() => navigatePublicAuth('login')}
             onOpenSignup={() => navigatePublicAuth('signup')}
-            onOpenLegal={(tab) => setLegalModalTab(tab)}
+            onOpenLegal={openLegalRoute}
           />
         )}
         {legalModalTab && (

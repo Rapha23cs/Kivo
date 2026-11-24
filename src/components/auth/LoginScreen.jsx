@@ -16,7 +16,11 @@ import {
   Send,
   Layers,
   ClipboardCheck,
-  FileCheck2
+  FileCheck2,
+  Sun,
+  Moon,
+  Sparkles,
+  Check
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
 import { validateStrongPassword, getPasswordScore } from '../../utils/securityHelpers';
@@ -73,9 +77,11 @@ export default function LoginScreen({
   onLoginSuccess,
   initialMode = 'login',
   onRecoveryComplete,
-  onBackToLanding
+  onBackToLanding,
+  theme = 'dark',
+  onToggleTheme
 }) {
-  // Modos: 'login' | 'signup' | 'forgot' | 'recovery' | 'mfa'
+  // Modos: 'login' | 'magic' | 'signup' | 'forgot' | 'recovery' | 'mfa'
   const [mode, setMode] = useState(initialMode);
 
   const [fullName, setFullName] = useState('');
@@ -288,6 +294,18 @@ export default function LoginScreen({
         }
 
         if (onLoginSuccess) onLoginSuccess(data.session);
+      } else if (mode === 'magic') {
+        const { error } = await client.auth.signInWithOtp({
+          email: email.trim(),
+          options: {
+            emailRedirectTo: window.location.origin
+          }
+        });
+        if (error) throw error;
+        setFeedback({
+          type: 'success',
+          text: `Enviamos um link de acesso instantâneo para ${email.trim()}. Verifique sua caixa de entrada ou spam.`
+        });
       } else if (mode === 'signup') {
         const { data, error } = await client.auth.signUp({
           email: email.trim(),
@@ -371,13 +389,13 @@ export default function LoginScreen({
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#122620] border border-[#2EB88A]/30 text-[#34D399] text-[11px] font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />
-              Meio Ambiente &amp; Segurança do Trabalho
+              Meio Ambiente &amp; Segurança do Trabalho (SST)
             </div>
             <h2 className="text-2xl xl:text-3xl font-semibold text-[#F4F4F5] tracking-tight leading-snug">
               Vistorias e relatórios estruturados, da visita em campo ao laudo técnico.
             </h2>
             <p className="text-sm text-[#A1A1AA] leading-relaxed">
-              Inicie sua vistoria escolhendo o fluxo de trabalho, preencha o checklist em campo e vincule para concluir o relatório técnico com segurança.
+              Execute checklists ambientais e de NRs mesmo offline, gerencie planos 5W2H com Matriz 5×5 e entregue laudos A4 com QR Code e PIN.
             </p>
           </div>
 
@@ -386,26 +404,26 @@ export default function LoginScreen({
             <div className="flex items-center justify-between text-xs border-b border-[#1F2024] pb-2.5">
               <span className="text-[#E4E4E7] font-medium flex items-center gap-2">
                 <ClipboardCheck className="w-4 h-4 text-[#34D399]" />
-                Fluxos de Vistoria &amp; Checklist
+                Plataforma Completa de Auditoria
               </span>
-              <span className="font-mono text-[11px] text-[#34D399]">2 áreas</span>
+              <span className="font-mono text-[11px] text-[#34D399]">Ambiental &amp; SST</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2.5 text-center">
               <div className="bg-[#0D0E10] border border-[#2EB88A]/30 rounded-lg p-2.5">
                 <Layers className="w-3.5 h-3.5 text-[#34D399] mx-auto mb-1" />
                 <span className="text-sm font-semibold text-[#F4F4F5] block">Ambiente</span>
-                <span className="text-[10px] text-[#34D399]">Ativo (63 itens)</span>
+                <span className="text-[10px] text-[#34D399]">63 itens • PGRSS</span>
               </div>
-              <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-2.5">
+              <div className="bg-[#0D0E10] border border-[#F59E0B]/30 rounded-lg p-2.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#FBBF24] mx-auto mb-1" />
-                <span className="text-sm font-semibold text-[#F4F4F5] block">Segurança</span>
-                <span className="text-[10px] text-[#FBBF24]">Em breve (SST)</span>
+                <span className="text-sm font-semibold text-[#F4F4F5] block">SST (NRs)</span>
+                <span className="text-[10px] text-[#FBBF24]">Matriz 5×5 + 5W2H</span>
               </div>
               <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-2.5">
                 <FileCheck2 className="w-3.5 h-3.5 text-[#A1A1AA] mx-auto mb-1" />
                 <span className="text-sm font-semibold text-[#F4F4F5] font-mono block">PDF + QR</span>
-                <span className="text-[10px] text-[#71717A]">Laudo Vinculado</span>
+                <span className="text-[10px] text-[#71717A]">Portal com PIN</span>
               </div>
             </div>
           </div>
@@ -413,33 +431,59 @@ export default function LoginScreen({
 
         {/* Rodapé discreto */}
         <div className="relative z-10 flex items-center justify-between text-[11px] text-[#71717A] border-t border-[#1F2024] pt-4">
-          <span>Acesso protegido por autenticação individual</span>
+          <span>Isolamento RLS • 2FA TOTP • Offline PWA</span>
           <span className="font-mono">Kivo • Multi-Cliente</span>
         </div>
       </aside>
 
       {/* Coluna Direita: Formulário de Autenticação */}
-      <main className="flex-1 flex flex-col items-center justify-center p-5 sm:p-8">
-        <div className="w-full max-w-[410px] space-y-6">
-          {onBackToLanding && (
-            <button
-              type="button"
-              onClick={onBackToLanding}
-              className="inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#34D399] transition"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Voltar à página inicial</span>
-            </button>
-          )}
-          {/* Header mobile da marca */}
-          <div className="flex lg:hidden justify-center">
-            <KivoLogo size="md" subtitle="Auditoria & Inspeção Ambiental" />
+      <main className="flex-1 flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-hidden">
+        <div
+          className="pointer-events-none absolute top-10 left-1/2 -translate-x-1/2 w-[420px] h-[220px] rounded-full opacity-15 blur-3xl"
+          style={{ background: 'radial-gradient(circle, #2EB88A 0%, transparent 70%)' }}
+        />
+
+        <div className="relative w-full max-w-[420px] space-y-5">
+          <div className="flex items-center justify-between gap-2">
+            {onBackToLanding ? (
+              <button
+                type="button"
+                onClick={onBackToLanding}
+                className="inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-[#34D399] transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Voltar à página inicial</span>
+              </button>
+            ) : (
+              <span className="text-[11px] font-mono text-[#71717A]">Acesso seguro Kivo</span>
+            )}
+
+            {onToggleTheme && (
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className="p-2 rounded-lg bg-[#141518] hover:bg-[#1C1D22] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5] transition"
+                title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+                aria-label="Alternar tema"
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-4 h-4 text-[#34D399]" />
+                ) : (
+                  <Sun className="w-4 h-4 text-[#FBBF24]" />
+                )}
+              </button>
+            )}
           </div>
 
-          <div className="bg-[#141518] border border-[#232429] rounded-2xl p-6 sm:p-7 space-y-6">
-            {/* Seletor de Modo (Heurística 3 & 4) */}
-            {(mode === 'login' || mode === 'signup') && (
-              <div className="grid grid-cols-2 bg-[#0D0E10] p-1 rounded-xl border border-[#232429] text-xs">
+          {/* Header mobile da marca */}
+          <div className="flex lg:hidden justify-center">
+            <KivoLogo size="md" subtitle="Meio Ambiente & SST" />
+          </div>
+
+          <div className="bg-[#141518] border border-[#232429] rounded-2xl p-6 sm:p-7 space-y-6 shadow-2xl">
+            {/* Seletor de Modo (Entrar | Link Mágico | Criar Conta) */}
+            {(mode === 'login' || mode === 'magic' || mode === 'signup') && (
+              <div className="grid grid-cols-3 bg-[#0D0E10] p-1 rounded-xl border border-[#232429] text-[11px]">
                 <button
                   type="button"
                   onClick={() => switchMode('login')}
@@ -448,7 +492,17 @@ export default function LoginScreen({
                       : 'text-[#71717A] hover:text-[#E4E4E7]'
                     }`}
                 >
-                  Entrar
+                  Senha
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode('magic')}
+                  className={`py-2 rounded-lg font-medium transition ${mode === 'magic'
+                      ? 'bg-[#1E2025] text-[#34D399] border border-[#2EB88A]/40'
+                      : 'text-[#71717A] hover:text-[#E4E4E7]'
+                    }`}
+                >
+                  Link Mágico
                 </button>
                 <button
                   type="button"
@@ -483,6 +537,7 @@ export default function LoginScreen({
               )}
               <h2 className="text-lg font-semibold text-[#F4F4F5] tracking-tight">
                 {mode === 'login' && 'Acesse sua conta'}
+                {mode === 'magic' && 'Entrar sem senha'}
                 {mode === 'signup' && 'Cadastro de novo técnico'}
                 {mode === 'forgot' && 'Recuperar acesso'}
                 {mode === 'recovery' && 'Definir nova senha'}
@@ -490,6 +545,7 @@ export default function LoginScreen({
               </h2>
               <p className="text-xs text-[#71717A]">
                 {mode === 'login' && 'Entre com seu e-mail e senha para gerenciar suas vistorias.'}
+                {mode === 'magic' && 'Receba um link instantâneo de acesso único no seu e-mail.'}
                 {mode === 'signup' && 'Crie sua conta individual para registrar inspeções no Kivo.'}
                 {mode === 'forgot' && 'Enviaremos um link seguro para você cadastrar uma nova senha.'}
                 {mode === 'recovery' && 'Escolha uma nova senha forte para concluir a recuperação da conta.'}
@@ -607,7 +663,7 @@ export default function LoginScreen({
                 </div>
               )}
 
-              {mode !== 'forgot' && mode !== 'mfa' && (
+              {mode !== 'forgot' && mode !== 'mfa' && mode !== 'magic' && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label htmlFor="password" className="text-[#A1A1AA] font-medium">
@@ -646,9 +702,9 @@ export default function LoginScreen({
                     </button>
                   </div>
 
-                  {/* Indicador de força da senha no Cadastro/Recuperação (Heurística 1 & 5) */}
+                  {/* Indicador de força da senha + Pílulas de requisitos */}
                   {(mode === 'signup' || mode === 'recovery') && password.length > 0 && (
-                    <div className="mt-2 space-y-1.5">
+                    <div className="mt-2 space-y-2">
                       <div className="grid grid-cols-4 gap-1">
                         {[1, 2, 3, 4].map((step) => (
                           <div
@@ -664,9 +720,27 @@ export default function LoginScreen({
                           />
                         ))}
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-[#71717A]">
-                        <span>Mín. 8 caracteres + letra + número/símbolo {passwordMinLen ? '✓' : ''}</span>
-                        <span>Força: <strong className="text-[#E4E4E7] font-medium">{strengthLabel}</strong></span>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        {[
+                          { ok: passwordPolicy.minLength, label: '8+ caracteres' },
+                          { ok: passwordPolicy.hasLetter, label: 'Letra' },
+                          { ok: passwordPolicy.hasNumberOrSymbol, label: 'Número/símbolo' }
+                        ].map((req) => (
+                          <span
+                            key={req.label}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${
+                              req.ok
+                                ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/35'
+                                : 'bg-[#0D0E10] text-[#71717A] border-[#232429]'
+                            }`}
+                          >
+                            <Check className="w-2.5 h-2.5" />
+                            {req.label}
+                          </span>
+                        ))}
+                        <span className="ml-auto text-[11px] text-[#71717A]">
+                          Força: <strong className="text-[#E4E4E7] font-medium">{strengthLabel}</strong>
+                        </span>
                       </div>
                     </div>
                   )}
@@ -726,6 +800,7 @@ export default function LoginScreen({
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold rounded-lg transition text-xs mt-2"
               >
                 {mode === 'login' && <LogIn className="w-4 h-4" />}
+                {mode === 'magic' && <Sparkles className="w-4 h-4" />}
                 {mode === 'signup' && <UserPlus className="w-4 h-4" />}
                 {(mode === 'forgot' || mode === 'recovery') && <KeyRound className="w-4 h-4" />}
                 {mode === 'mfa' && <ShieldCheck className="w-4 h-4" />}
@@ -736,13 +811,15 @@ export default function LoginScreen({
                       ? `Aguarde ${cooldownSecondsLeft}s`
                       : mode === 'login'
                         ? 'Entrar no Kivo'
-                        : mode === 'signup'
-                          ? 'Criar minha conta'
-                          : mode === 'forgot'
-                            ? 'Enviar link de recuperação'
-                            : mode === 'mfa'
-                              ? 'Validar Código 2FA'
-                              : 'Salvar nova senha'}
+                        : mode === 'magic'
+                          ? 'Enviar Link de Acesso'
+                          : mode === 'signup'
+                            ? 'Criar minha conta'
+                            : mode === 'forgot'
+                              ? 'Enviar link de recuperação'
+                              : mode === 'mfa'
+                                ? 'Validar Código 2FA'
+                                : 'Salvar nova senha'}
                 </span>
               </button>
             </form>
