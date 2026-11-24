@@ -1,14 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
-import DashboardOverview from './components/dashboard/DashboardOverview';
-import WorkOrderList from './components/workOrders/WorkOrderList';
-import WorkOrderDetailModal from './components/workOrders/WorkOrderDetailModal';
-import NewWorkOrderModal from './components/workOrders/NewWorkOrderModal';
-import UserProfileModal from './components/profile/UserProfileModal';
-import LoginScreen from './components/auth/LoginScreen';
-import ReportsModule from './components/reports/ReportsModule';
-import UnitsModule from './components/units/UnitsModule';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase/supabaseConfig';
 import { DataService } from './supabase/dataService';
 import { ReportService } from './supabase/reportService';
@@ -16,18 +8,27 @@ import { OfflineStore } from './offline/offlineStore';
 import { SyncEngine } from './offline/syncEngine';
 import { useFeedback } from './components/common/FeedbackProvider';
 import { AppLoadingSkeleton } from './components/common/SkeletonLoader';
-import CommandPaletteModal from './components/common/CommandPaletteModal';
-import NotFoundPage from './components/common/NotFoundPage';
-import LegalInfoModal from './components/common/LegalInfoModal';
-import LandingPage from './components/public/LandingPage';
-import PublicReportPortal from './components/public/PublicReportPortal';
 import PwaInstallBanner from './components/common/PwaInstallBanner';
-import ActionPlansModule from './components/actions/ActionPlansModule';
-import AgendaModule from './components/agenda/AgendaModule';
-import ChecklistTemplatesModal from './components/templates/ChecklistTemplatesModal';
 import { OperationsService, getExpiryStatus } from './supabase/operationsService';
 import { buildSstChecklist } from './data/sstChecklistData';
 import { getDisciplineMeta } from './data/workflowsConfig';
+
+const DashboardOverview = lazy(() => import('./components/dashboard/DashboardOverview'));
+const WorkOrderList = lazy(() => import('./components/workOrders/WorkOrderList'));
+const WorkOrderDetailModal = lazy(() => import('./components/workOrders/WorkOrderDetailModal'));
+const NewWorkOrderModal = lazy(() => import('./components/workOrders/NewWorkOrderModal'));
+const UserProfileModal = lazy(() => import('./components/profile/UserProfileModal'));
+const LoginScreen = lazy(() => import('./components/auth/LoginScreen'));
+const ReportsModule = lazy(() => import('./components/reports/ReportsModule'));
+const UnitsModule = lazy(() => import('./components/units/UnitsModule'));
+const CommandPaletteModal = lazy(() => import('./components/common/CommandPaletteModal'));
+const NotFoundPage = lazy(() => import('./components/common/NotFoundPage'));
+const LegalInfoModal = lazy(() => import('./components/common/LegalInfoModal'));
+const LandingPage = lazy(() => import('./components/public/LandingPage'));
+const PublicReportPortal = lazy(() => import('./components/public/PublicReportPortal'));
+const ActionPlansModule = lazy(() => import('./components/actions/ActionPlansModule'));
+const AgendaModule = lazy(() => import('./components/agenda/AgendaModule'));
+const ChecklistTemplatesModal = lazy(() => import('./components/templates/ChecklistTemplatesModal'));
 
 const TAB_TITLES = {
   dashboard: 'Kivo — Meu Painel',
@@ -231,9 +232,19 @@ export default function App() {
       setReports(result.reports);
       if (result.clients) setClients(result.clients);
       if (result.units) setUnits(result.units);
+      if (result.templates) setTemplates(result.templates);
+      if (result.schedules) setSchedules(result.schedules);
+      if (result.sstItems) setSstItems(result.sstItems);
       setUserProfile(result.profile);
       setPendingSyncCount(result.pendingCount);
-      if (result.synced > 0) {
+      if (result.errors?.length > 0) {
+        const firstErr = result.errors[0];
+        toast.warning({
+          title: `Pendência ao sincronizar (${result.errors.length})`,
+          message: `${firstErr.entity}: ${firstErr.message}`,
+          duration: 7000
+        });
+      } else if (result.synced > 0) {
         toast.success({
           title: 'Sincronização concluída',
           message: `${result.synced} alteração(ões) enviada(s) para o Supabase.`
@@ -294,6 +305,26 @@ export default function App() {
       }
     }
   };
+
+  useEffect(() => {
+    const onSwUpdate = (ev) => {
+      const registration = ev?.detail?.registration;
+      if (!registration?.waiting) return;
+      toast.info({
+        title: 'Nova versão do Kivo disponível',
+        message: 'Atualize a página para carregar as melhorias mais recentes.',
+        duration: 0,
+        action: {
+          label: 'Atualizar agora',
+          onClick: () => {
+            registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+          }
+        }
+      });
+    };
+    window.addEventListener('kivo:sw-update', onSwUpdate);
+    return () => window.removeEventListener('kivo:sw-update', onSwUpdate);
+  }, [toast]);
 
   useEffect(() => {
     const unsubscribePending = OfflineStore.subscribe((count) => {
@@ -590,7 +621,7 @@ export default function App() {
 
   if (publicReportToken) {
     return (
-      <>
+      <Suspense fallback={<AppLoadingSkeleton />}>
         <PublicReportPortal
           token={publicReportToken}
           onBackToHome={() => {
@@ -610,7 +641,7 @@ export default function App() {
           />
         )}
         <PwaInstallBanner />
-      </>
+      </Suspense>
     );
   }
 
@@ -620,36 +651,40 @@ export default function App() {
 
   if (isNotFound) {
     return (
-      <NotFoundPage
-        pathname={typeof window !== 'undefined' ? window.location.pathname : ''}
-        isAuthenticated={!supabaseEnabled || Boolean(session)}
-        onGoHome={() => {
-          if (typeof window !== 'undefined') {
-            window.history.replaceState({}, '', '/');
-          }
-          setIsNotFound(false);
-          setPublicAuthMode(null);
-          setActiveTab('dashboard');
-        }}
-      />
+      <Suspense fallback={<AppLoadingSkeleton />}>
+        <NotFoundPage
+          pathname={typeof window !== 'undefined' ? window.location.pathname : ''}
+          isAuthenticated={!supabaseEnabled || Boolean(session)}
+          onGoHome={() => {
+            if (typeof window !== 'undefined') {
+              window.history.replaceState({}, '', '/');
+            }
+            setIsNotFound(false);
+            setPublicAuthMode(null);
+            setActiveTab('dashboard');
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (supabaseEnabled && recoveryMode) {
     return (
-      <LoginScreen
-        initialMode="recovery"
-        onRecoveryComplete={() => {
-          setRecoveryMode(false);
-          loadAllData();
-        }}
-      />
+      <Suspense fallback={<AppLoadingSkeleton />}>
+        <LoginScreen
+          initialMode="recovery"
+          onRecoveryComplete={() => {
+            setRecoveryMode(false);
+            loadAllData();
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (supabaseEnabled && !session) {
     return (
-      <>
+      <Suspense fallback={<AppLoadingSkeleton />}>
         {publicAuthMode ? (
           <LoginScreen
             initialMode={publicAuthMode}
@@ -684,7 +719,7 @@ export default function App() {
           />
         )}
         <PwaInstallBanner />
-      </>
+      </Suspense>
     );
   }
 
@@ -847,214 +882,228 @@ export default function App() {
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8">
           <div key={activeTab} className="max-w-7xl mx-auto space-y-6 animate-fade-in">
-            {activeTab === 'dashboard' && (
-              <DashboardOverview
-                orders={displayedOrders}
-                reports={displayedReports}
-                units={displayedUnits}
-                userProfile={userProfile}
-                onOpenOrder={(order) => setSelectedOrder(order)}
-                onNewOrder={() => {
-                  setPreselectedUnitForNewOrder(null);
-                  setIsNewOrderModalOpen(true);
-                }}
-                onNavigateTab={setActiveTab}
-                onOpenProfile={() => setIsProfileModalOpen(true)}
-              />
-            )}
+            <Suspense
+              fallback={
+                <div className="py-16 text-center text-xs text-[#71717A]">
+                  Carregando módulo...
+                </div>
+              }
+            >
+              {activeTab === 'dashboard' && (
+                <DashboardOverview
+                  orders={displayedOrders}
+                  reports={displayedReports}
+                  units={displayedUnits}
+                  userProfile={userProfile}
+                  onOpenOrder={(order) => setSelectedOrder(order)}
+                  onNewOrder={() => {
+                    setPreselectedUnitForNewOrder(null);
+                    setIsNewOrderModalOpen(true);
+                  }}
+                  onNavigateTab={setActiveTab}
+                  onOpenProfile={() => setIsProfileModalOpen(true)}
+                />
+              )}
 
-            {activeTab === 'orders' && (
-              <WorkOrderList
-                orders={displayedOrders}
-                onOpenOrder={(order) => setSelectedOrder(order)}
-                onNewOrder={() => {
-                  setPreselectedUnitForNewOrder(null);
-                  setIsNewOrderModalOpen(true);
-                }}
-                onOpenTemplates={() => setIsTemplatesModalOpen(true)}
-                onDeleteOrder={handleDeleteOrder}
-                onUpdateOrderStatus={handleUpdateOrderStatus}
-                onRestoreOrder={handleRestoreOrder}
-              />
-            )}
+              {activeTab === 'orders' && (
+                <WorkOrderList
+                  orders={displayedOrders}
+                  onOpenOrder={(order) => setSelectedOrder(order)}
+                  onNewOrder={() => {
+                    setPreselectedUnitForNewOrder(null);
+                    setIsNewOrderModalOpen(true);
+                  }}
+                  onOpenTemplates={() => setIsTemplatesModalOpen(true)}
+                  onDeleteOrder={handleDeleteOrder}
+                  onUpdateOrderStatus={handleUpdateOrderStatus}
+                  onRestoreOrder={handleRestoreOrder}
+                />
+              )}
 
-            {activeTab === 'actions' && (
-              <ActionPlansModule
-                orders={displayedOrders}
-                onUpdateOrder={handleUpdateOrder}
-                onOpenOrder={(order) => setSelectedOrder(order)}
-              />
-            )}
+              {activeTab === 'actions' && (
+                <ActionPlansModule
+                  orders={displayedOrders}
+                  onUpdateOrder={handleUpdateOrder}
+                  onOpenOrder={(order) => setSelectedOrder(order)}
+                />
+              )}
 
-            {activeTab === 'agenda' && (
-              <AgendaModule
-                schedules={displayedSchedules}
-                units={displayedUnits}
-                templates={templates}
-                onSaveSchedule={handleSaveSchedule}
-                onDeleteSchedule={handleDeleteSchedule}
-                onStartOrderFromSchedule={handleStartOrderFromSchedule}
-              />
-            )}
+              {activeTab === 'agenda' && (
+                <AgendaModule
+                  schedules={displayedSchedules}
+                  units={displayedUnits}
+                  templates={templates}
+                  onSaveSchedule={handleSaveSchedule}
+                  onDeleteSchedule={handleDeleteSchedule}
+                  onStartOrderFromSchedule={handleStartOrderFromSchedule}
+                />
+              )}
 
-            {activeTab === 'units' && (
-              <UnitsModule
-                units={displayedUnits}
-                clients={clients}
-                orders={displayedOrders}
-                reports={displayedReports}
-                sstItems={displayedSstItems}
-                onSaveUnit={handleSaveUnit}
-                onDeleteUnit={handleDeleteUnit}
-                onSaveClient={handleSaveClient}
-                onDeleteClient={handleDeleteClient}
-                onSaveSstItem={handleSaveSstItem}
-                onDeleteSstItem={handleDeleteSstItem}
-                onImportUnitsFromOrders={handleImportUnitsFromOrders}
-                onNewOrderForUnit={(unit) => {
-                  setPreselectedUnitForNewOrder(unit);
-                  setIsNewOrderModalOpen(true);
-                }}
-                onOpenOrder={(order) => setSelectedOrder(order)}
-                onNavigateTab={setActiveTab}
-              />
-            )}
+              {activeTab === 'units' && (
+                <UnitsModule
+                  units={displayedUnits}
+                  clients={clients}
+                  orders={displayedOrders}
+                  reports={displayedReports}
+                  sstItems={displayedSstItems}
+                  onSaveUnit={handleSaveUnit}
+                  onDeleteUnit={handleDeleteUnit}
+                  onSaveClient={handleSaveClient}
+                  onDeleteClient={handleDeleteClient}
+                  onSaveSstItem={handleSaveSstItem}
+                  onDeleteSstItem={handleDeleteSstItem}
+                  onImportUnitsFromOrders={handleImportUnitsFromOrders}
+                  onNewOrderForUnit={(unit) => {
+                    setPreselectedUnitForNewOrder(unit);
+                    setIsNewOrderModalOpen(true);
+                  }}
+                  onOpenOrder={(order) => setSelectedOrder(order)}
+                  onNavigateTab={setActiveTab}
+                />
+              )}
 
-            {activeTab === 'reports' && (
-              <ReportsModule
-                reports={displayedReports}
-                orders={displayedOrders}
-                units={displayedUnits}
-                clients={clients}
-                hospitals={clients.map((c) => ({ clientName: c.nome, name: '' }))}
-                userProfile={userProfile}
-                initialEditingReport={pendingReportToOpen}
-                onClearInitialEditingReport={() => setPendingReportToOpen(null)}
-                onOpenOrderByCode={(codeOrId) => {
-                  const found = orders.find((o) => o.id === codeOrId || o.supabaseId === codeOrId);
-                  if (found) setSelectedOrder(found);
-                }}
-                onNavigateTab={setActiveTab}
-                onSaveReport={async (rep) => {
-                  const next = await ReportService.saveReport(rep);
-                  setReports(next);
-                  if (rep?.status === 'finalizado') {
-                    const linkedOrder = orders.find(
-                      (o) =>
-                        (rep.inspecaoId && o.supabaseId === rep.inspecaoId) ||
-                        (rep.inspecaoCodigo && o.id === rep.inspecaoCodigo)
-                    );
-                    if (linkedOrder && linkedOrder.status !== 'completed') {
-                      handleUpdateOrder({
-                        ...linkedOrder,
-                        status: 'completed',
-                        completedAt: linkedOrder.completedAt || new Date().toISOString()
-                      });
+              {activeTab === 'reports' && (
+                <ReportsModule
+                  reports={displayedReports}
+                  orders={displayedOrders}
+                  units={displayedUnits}
+                  clients={clients}
+                  hospitals={clients.map((c) => ({ clientName: c.nome, name: '' }))}
+                  userProfile={userProfile}
+                  initialEditingReport={pendingReportToOpen}
+                  onClearInitialEditingReport={() => setPendingReportToOpen(null)}
+                  onOpenOrderByCode={(codeOrId) => {
+                    const found = orders.find((o) => o.id === codeOrId || o.supabaseId === codeOrId);
+                    if (found) setSelectedOrder(found);
+                  }}
+                  onNavigateTab={setActiveTab}
+                  onSaveReport={async (rep) => {
+                    const next = await ReportService.saveReport(rep);
+                    setReports(next);
+                    if (rep?.status === 'finalizado') {
+                      const linkedOrder = orders.find(
+                        (o) =>
+                          (rep.inspecaoId && o.supabaseId === rep.inspecaoId) ||
+                          (rep.inspecaoCodigo && o.id === rep.inspecaoCodigo)
+                      );
+                      if (linkedOrder && linkedOrder.status !== 'completed') {
+                        handleUpdateOrder({
+                          ...linkedOrder,
+                          status: 'completed',
+                          completedAt: linkedOrder.completedAt || new Date().toISOString()
+                        });
+                      }
                     }
-                  }
-                }}
-                onLocalDraftUpdate={(nextList) => {
-                  setReports(nextList);
-                }}
-                onDeleteReport={async (rep) => {
-                  const next = await ReportService.deleteReport(rep);
-                  setReports(next);
-                }}
-              />
-            )}
+                  }}
+                  onLocalDraftUpdate={(nextList) => {
+                    setReports(nextList);
+                  }}
+                  onDeleteReport={async (rep) => {
+                    const next = await ReportService.deleteReport(rep);
+                    setReports(next);
+                  }}
+                />
+              )}
+            </Suspense>
           </div>
         </main>
       </div>
 
-      {selectedOrder && (
-        <WorkOrderDetailModal
-          order={selectedOrder}
-          isOpen={Boolean(selectedOrder)}
-          onClose={() => setSelectedOrder(null)}
-          onUpdateOrder={handleUpdateOrder}
-          linkedReport={findReportForOrder(selectedOrder)}
-          previousOrder={findPreviousOrderForUnit(selectedOrder)}
-          onOpenTechnicalReport={handleOpenTechnicalReportFromOrder}
-          userProfile={userProfile}
-        />
-      )}
+      <Suspense fallback={null}>
+        {selectedOrder && (
+          <WorkOrderDetailModal
+            order={selectedOrder}
+            isOpen={Boolean(selectedOrder)}
+            onClose={() => setSelectedOrder(null)}
+            onUpdateOrder={handleUpdateOrder}
+            linkedReport={findReportForOrder(selectedOrder)}
+            previousOrder={findPreviousOrderForUnit(selectedOrder)}
+            onOpenTechnicalReport={handleOpenTechnicalReportFromOrder}
+            userProfile={userProfile}
+          />
+        )}
 
-      {isNewOrderModalOpen && (
-        <NewWorkOrderModal
-          isOpen={isNewOrderModalOpen}
-          onClose={() => {
-            setIsNewOrderModalOpen(false);
-            setPreselectedUnitForNewOrder(null);
-          }}
-          onCreateOrder={handleCreateOrder}
-          onSaveUnit={handleSaveUnit}
-          clients={clients}
-          units={units}
-          templates={templates}
-          onOpenTemplates={() => setIsTemplatesModalOpen(true)}
-          initialUnit={preselectedUnitForNewOrder}
-          userProfile={userProfile}
-        />
-      )}
+        {isNewOrderModalOpen && (
+          <NewWorkOrderModal
+            isOpen={isNewOrderModalOpen}
+            onClose={() => {
+              setIsNewOrderModalOpen(false);
+              setPreselectedUnitForNewOrder(null);
+            }}
+            onCreateOrder={handleCreateOrder}
+            onSaveUnit={handleSaveUnit}
+            clients={clients}
+            units={units}
+            templates={templates}
+            onOpenTemplates={() => setIsTemplatesModalOpen(true)}
+            initialUnit={preselectedUnitForNewOrder}
+            userProfile={userProfile}
+          />
+        )}
 
-      {isTemplatesModalOpen && (
-        <ChecklistTemplatesModal
-          isOpen={isTemplatesModalOpen}
-          templates={templates}
-          onSaveTemplate={handleSaveTemplate}
-          onDeleteTemplate={handleDeleteTemplate}
-          onClose={() => setIsTemplatesModalOpen(false)}
-        />
-      )}
+        {isTemplatesModalOpen && (
+          <ChecklistTemplatesModal
+            isOpen={isTemplatesModalOpen}
+            templates={templates}
+            onSaveTemplate={handleSaveTemplate}
+            onDeleteTemplate={handleDeleteTemplate}
+            onClose={() => setIsTemplatesModalOpen(false)}
+          />
+        )}
 
-      {isProfileModalOpen && (
-        <UserProfileModal
-          isOpen={isProfileModalOpen}
-          onClose={() => setIsProfileModalOpen(false)}
-          userProfile={userProfile}
-          onSaveProfile={handleSaveProfile}
-          onSignOut={supabaseEnabled ? handleSignOut : null}
-          isOnline={isOnline}
-          pendingSyncCount={pendingSyncCount}
-          onSyncNow={handleSyncNow}
-          stats={{
-            clients: clients.length,
-            units: units.length,
-            orders: orders.length,
-            reports: reports.length
-          }}
-        />
-      )}
+        {isProfileModalOpen && (
+          <UserProfileModal
+            isOpen={isProfileModalOpen}
+            onClose={() => setIsProfileModalOpen(false)}
+            userProfile={userProfile}
+            onSaveProfile={handleSaveProfile}
+            onSignOut={supabaseEnabled ? handleSignOut : null}
+            isOnline={isOnline}
+            pendingSyncCount={pendingSyncCount}
+            onSyncNow={handleSyncNow}
+            stats={{
+              clients: clients.length,
+              units: units.length,
+              orders: orders.length,
+              reports: reports.length
+            }}
+          />
+        )}
 
-      <CommandPaletteModal
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        orders={orders}
-        reports={reports}
-        units={units}
-        onSelectOrder={(ord) => setSelectedOrder(ord)}
-        onSelectReport={(rep) => {
-          setActiveTab('reports');
-          setPendingReportToOpen(rep);
-        }}
-        onNavigateTab={setActiveTab}
-        onNewOrder={() => {
-          setPreselectedUnitForNewOrder(null);
-          setIsNewOrderModalOpen(true);
-        }}
-        onOpenProfile={() => setIsProfileModalOpen(true)}
-      />
+        {isCommandPaletteOpen && (
+          <CommandPaletteModal
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            orders={orders}
+            reports={reports}
+            units={units}
+            onSelectOrder={(ord) => setSelectedOrder(ord)}
+            onSelectReport={(rep) => {
+              setActiveTab('reports');
+              setPendingReportToOpen(rep);
+            }}
+            onNavigateTab={setActiveTab}
+            onNewOrder={() => {
+              setPreselectedUnitForNewOrder(null);
+              setIsNewOrderModalOpen(true);
+            }}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
+          />
+        )}
 
-      <LegalInfoModal
-        isOpen={Boolean(legalModalTab)}
-        initialTab={legalModalTab || 'privacidade'}
-        onClose={() => {
-          setLegalModalTab(null);
-          if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
-            window.history.replaceState({}, '', '/');
-          }
-        }}
-      />
+        {legalModalTab && (
+          <LegalInfoModal
+            isOpen={Boolean(legalModalTab)}
+            initialTab={legalModalTab || 'privacidade'}
+            onClose={() => {
+              setLegalModalTab(null);
+              if (typeof window !== 'undefined' && ['/privacidade', '/termos', '/suporte'].includes(window.location.pathname)) {
+                window.history.replaceState({}, '', '/');
+              }
+            }}
+          />
+        )}
+      </Suspense>
 
       <PwaInstallBanner />
     </div>

@@ -758,6 +758,12 @@ export const ReportService = {
         unidadeId: row.unidade_id || null,
         inspecaoId: row.inspecao_id || null,
         inspecaoCodigo: row.inspecoes?.codigo_kivo || '',
+        desempenhoTematico: Array.isArray(row.dados_extras?.desempenhoTematico)
+          ? row.dados_extras.desempenhoTematico
+          : [],
+        itensNaoAplicaveis: row.dados_extras?.itensNaoAplicaveis ?? 0,
+        itensPendentes: row.dados_extras?.itensPendentes ?? 0,
+        fotosImportadasChecklist: row.dados_extras?.fotosImportadasChecklist ?? 0,
         publicToken: row.public_token || null,
         publicEnabled: Boolean(row.public_enabled),
         publicSharedAt: row.public_shared_at || null,
@@ -896,6 +902,12 @@ export const ReportService = {
       conclusao_texto: report.conclusaoTexto || null,
       status: report.status === 'finalizado' ? 'finalizado' : 'rascunho',
       disciplina: report.discipline === 'seguranca_trabalho' ? 'seguranca_trabalho' : 'meio_ambiente',
+      dados_extras: {
+        desempenhoTematico: Array.isArray(report.desempenhoTematico) ? report.desempenhoTematico : [],
+        itensNaoAplicaveis: Number(report.itensNaoAplicaveis) || 0,
+        itensPendentes: Number(report.itensPendentes) || 0,
+        fotosImportadasChecklist: Number(report.fotosImportadasChecklist) || 0
+      },
       ...(isUuid(report.publicToken) ? { public_token: report.publicToken } : {}),
       public_enabled: Boolean(report.publicEnabled),
       ...(report.publicSharedAt ? { public_shared_at: report.publicSharedAt } : {})
@@ -952,7 +964,8 @@ export const ReportService = {
       rpcError.message?.includes('Could not find the function') ||
       rpcError.message?.includes('unidade_id') ||
       rpcError.message?.includes('public_') ||
-      rpcError.message?.includes('disciplina');
+      rpcError.message?.includes('disciplina') ||
+      rpcError.message?.includes('dados_extras');
 
     if (rpcError && !canFallbackFromRpc) {
       throw new Error(rpcError.message);
@@ -983,11 +996,13 @@ export const ReportService = {
         headerError.code === '42703' ||
         headerError.message?.includes('unidade_id') ||
         headerError.message?.includes('public_') ||
-        headerError.message?.includes('disciplina'))
+        headerError.message?.includes('disciplina') ||
+        headerError.message?.includes('dados_extras'))
     ) {
       const {
         unidade_id: _u,
         disciplina: _d,
+        dados_extras: _dx,
         public_token: _pt,
         public_enabled: _pe,
         public_shared_at: _ps,
@@ -1047,7 +1062,7 @@ export const ReportService = {
       publicSharedAt: enabled ? (report.publicSharedAt || new Date().toISOString()) : report.publicSharedAt || null
     };
 
-    // Ao ativar compartilhamento público online, renova Signed URLs das mídias para 30 dias
+    // Ao ativar compartilhamento público online, renova Signed URLs das mídias para 1 ano (365 dias)
     if (enabled && isSupabaseConfigured() && navigator.onLine !== false) {
       try {
         const { client } = getSupabaseClient();
@@ -1056,7 +1071,7 @@ export const ReportService = {
             updated.fachadaUrl,
             ...(updated.registrosFotograficos || []).map((f) => f.fotoUrl)
           ].filter(Boolean);
-          const refreshedMap = await refreshSignedMediaUrls(client, urls, 60 * 60 * 24 * 30);
+          const refreshedMap = await refreshSignedMediaUrls(client, urls, 60 * 60 * 24 * 365);
           if (refreshedMap.size > 0) {
             updated = {
               ...updated,

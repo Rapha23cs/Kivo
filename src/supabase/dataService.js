@@ -190,6 +190,30 @@ let clientsMemoryCache = null;
 let unitsMemoryCache = null;
 let catalogMemoryCache = null;
 
+// Controle por OS para debounce + envio sequencial sem race condition
+const orderSyncTimers = new Map();
+const orderSyncInFlight = new Map();
+const orderSyncDirty = new Map();
+const orderSyncCallbacks = new Map();
+
+function clearOrderSyncSchedulers() {
+  orderSyncTimers.forEach((timerId) => clearTimeout(timerId));
+  orderSyncTimers.clear();
+  orderSyncDirty.clear();
+  orderSyncCallbacks.clear();
+}
+
+function clearCrossServiceCaches() {
+  try {
+    localStorage.removeItem('kivo_environmental_reports');
+    localStorage.removeItem('kivo_checklist_templates');
+    localStorage.removeItem('kivo_vistorias_agenda');
+    localStorage.removeItem('kivo_sst_vencimentos');
+  } catch {
+    // ignora
+  }
+}
+
 function persistOrdersCache(list) {
   ordersMemoryCache = list;
   safeLocalStorageSet(LS_ORDERS_KEY, JSON.stringify(list));
@@ -269,6 +293,7 @@ export const DataService = {
   // ---- SESSÃO MULTI-USUÁRIO & PERFIL PERSISTIDO NO SUPABASE AUTH ----
   syncSessionUser(user) {
     if (!user) {
+      clearOrderSyncSchedulers();
       ordersMemoryCache = null;
       profileMemoryCache = null;
       clientsMemoryCache = null;
@@ -278,12 +303,14 @@ export const DataService = {
       localStorage.removeItem(LS_CLIENTS_KEY);
       localStorage.removeItem(LS_UNITS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
+      clearCrossServiceCaches();
       OfflineStore.clearAllDataCaches();
       return null;
     }
 
     const previousUid = localStorage.getItem(LS_ACTIVE_UID_KEY);
     if (previousUid && previousUid !== user.id) {
+      clearOrderSyncSchedulers();
       ordersMemoryCache = null;
       profileMemoryCache = null;
       clientsMemoryCache = null;
@@ -292,6 +319,7 @@ export const DataService = {
       localStorage.removeItem(LS_CLIENTS_KEY);
       localStorage.removeItem(LS_UNITS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
+      clearCrossServiceCaches();
       OfflineStore.clearAllDataCaches();
     }
     localStorage.setItem(LS_ACTIVE_UID_KEY, user.id);
@@ -756,28 +784,73 @@ export const DataService = {
     persistOrdersCache(newOrders);
     OfflineStore.enqueueOrderUpsert(mergedOrder.id);
 
+    if (typeof onSynced === 'function') {
+      orderSyncCallbacks.set(mergedOrder.id, onSynced);
+    }
+
     if (isSupabaseConfigured() && navigator.onLine !== false) {
-      this.syncOrderWithMedia(mergedOrder)
-        .then(async ({ inspecaoRow, resolvedOrder }) => {
-          if (!inspecaoRow?.id) return;
-          const latest = this.getOrders();
-          const patched = latest.map((o) =>
-            o.id === mergedOrder.id
-              ? { ...o, ...resolvedOrder, supabaseId: inspecaoRow.id }
-              : o
-          );
-          persistOrdersCache(patched);
-          await OfflineStore.dequeueOrderUpsert(mergedOrder.id);
-          if (typeof onSynced === 'function') {
-            onSynced(inspecaoRow.id, patched);
-          }
-        })
-        .catch((err) => {
-          console.warn('Inspeção salva offline; aguardando sincronização:', err.message);
-        });
+      const existingTimer = orderSyncTimers.get(mergedOrder.id);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timerId = setTimeout(() => {
+        orderSyncTimers.delete(mergedOrder.id);
+        this.runSequentialOrderSync(mergedOrder.id);
+      }, 400);
+      orderSyncTimers.set(mergedOrder.id, timerId);
     }
 
     return newOrders;
+  },
+
+  async runSequentialOrderSync(orderId) {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return false;
+
+    if (orderSyncInFlight.has(orderId)) {
+      orderSyncDirty.set(orderId, true);
+      return orderSyncInFlight.get(orderId);
+    }
+
+    const job = (async () => {
+      do {
+        orderSyncDirty.set(orderId, false);
+        const latestOrder = this.getOrderById(orderId);
+        if (!latestOrder) {
+          await OfflineStore.dequeueOrderUpsert(orderId);
+          return true;
+        }
+        const { inspecaoRow, resolvedOrder } = await this.syncOrderWithMedia(latestOrder);
+        if (!inspecaoRow?.id) return false;
+
+        const latestAll = this.getOrders();
+        const patched = latestAll.map((o) =>
+          o.id === orderId ? { ...o, ...resolvedOrder, supabaseId: inspecaoRow.id } : o
+        );
+        persistOrdersCache(patched);
+
+        if (!orderSyncDirty.get(orderId)) {
+          await OfflineStore.dequeueOrderUpsert(orderId);
+          OfflineStore.clearSyncError('order', orderId);
+          const cb = orderSyncCallbacks.get(orderId);
+          if (typeof cb === 'function') {
+            cb(inspecaoRow.id, patched);
+          }
+        }
+      } while (orderSyncDirty.get(orderId) && navigator.onLine !== false);
+      return true;
+    })()
+      .catch((err) => {
+        const msg = err?.message || String(err);
+        OfflineStore.recordSyncError('order', orderId, msg);
+        console.warn('Inspeção salva offline; aguardando sincronização:', msg);
+        return false;
+      })
+      .finally(() => {
+        orderSyncInFlight.delete(orderId);
+        orderSyncDirty.delete(orderId);
+      });
+
+    orderSyncInFlight.set(orderId, job);
+    return job;
   },
 
   async syncOrderWithMedia(order) {
@@ -852,22 +925,12 @@ export const DataService = {
 
   async flushPendingOrder(orderId) {
     if (!isSupabaseConfigured() || navigator.onLine === false) return false;
-    const order = this.getOrderById(orderId);
-    if (!order) {
-      await OfflineStore.dequeueOrderUpsert(orderId);
-      return true;
+    const pendingTimer = orderSyncTimers.get(orderId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      orderSyncTimers.delete(orderId);
     }
-
-    const { inspecaoRow, resolvedOrder } = await this.syncOrderWithMedia(order);
-    if (!inspecaoRow?.id) return false;
-
-    const latest = this.getOrders();
-    const patched = latest.map((o) =>
-      o.id === orderId ? { ...o, ...resolvedOrder, supabaseId: inspecaoRow.id } : o
-    );
-    persistOrdersCache(patched);
-    await OfflineStore.dequeueOrderUpsert(orderId);
-    return true;
+    return this.runSequentialOrderSync(orderId);
   },
 
   async flushPendingOrderDelete(orderId) {

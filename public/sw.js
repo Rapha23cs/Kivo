@@ -10,8 +10,14 @@ self.addEventListener('install', (event) => {
           cache.add(new Request(url, { cache: 'reload' })).catch(() => null)
         )
       );
-    }).then(() => self.skipWaiting())
+    })
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
@@ -38,7 +44,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response && response.ok) {
+          const contentType = response.headers.get('content-type') || '';
+          if (response && response.ok && contentType.includes('text/html')) {
             const copy = response.clone();
             caches.open(CACHE_VERSION).then((cache) => cache.put('/index.html', copy));
           }

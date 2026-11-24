@@ -2,9 +2,29 @@
 import { OfflineStore } from './offlineStore';
 import { DataService } from '../supabase/dataService';
 import { ReportService } from '../supabase/reportService';
+import { OperationsService } from '../supabase/operationsService';
 import { isSupabaseConfigured } from '../supabase/supabaseConfig';
 
 let inFlightPromise = null;
+
+async function runQueueItems(keys = [], entity, fn) {
+  let count = 0;
+  const errors = [];
+  for (const key of keys) {
+    try {
+      if (await fn(key)) {
+        OfflineStore.clearSyncError(entity, key);
+        count += 1;
+      }
+    } catch (err) {
+      const msg = err?.message || String(err);
+      OfflineStore.recordSyncError(entity, key, msg);
+      errors.push({ entity, entityKey: key, message: msg });
+      console.warn(`Falha ao sincronizar ${entity} (${key}):`, msg);
+    }
+  }
+  return { count, errors };
+}
 
 export const SyncEngine = {
   async flushQueue() {
@@ -12,103 +32,83 @@ export const SyncEngine = {
     if (!isSupabaseConfigured() || navigator.onLine === false) {
       return {
         synced: 0,
+        errors: OfflineStore.getSyncErrors(),
         pendingCount: OfflineStore.getPendingCount(),
         orders: DataService.getOrders(),
         reports: ReportService.getReports(),
         clients: DataService.getClients(),
         units: DataService.getUnits(),
+        templates: OperationsService.getTemplates(),
+        schedules: OperationsService.getSchedules(),
+        sstItems: OperationsService.getSstItems(),
         profile: DataService.getUserProfile()
       };
     }
 
     inFlightPromise = (async () => {
       let synced = 0;
+      const errors = [];
       const pending = OfflineStore.getPendingIndex();
 
       // 1. Perfil RT
       if (pending.updateProfile) {
         try {
-          if (await DataService.flushPendingProfile()) synced += 1;
+          if (await DataService.flushPendingProfile()) {
+            OfflineStore.clearSyncError('profile', 'current');
+            synced += 1;
+          }
         } catch (err) {
-          console.warn('Falha ao sincronizar perfil pendente:', err?.message || err);
+          const msg = err?.message || String(err);
+          OfflineStore.recordSyncError('profile', 'current', msg);
+          errors.push({ entity: 'profile', entityKey: 'current', message: msg });
         }
       }
 
-      // 2. Exclusões pendentes (relatórios -> vistorias -> unidades -> clientes)
-      for (const code of pending.deleteReports) {
-        try {
-          if (await ReportService.flushPendingReportDelete(code)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar exclusão do relatório ${code}:`, err?.message || err);
-        }
+      // 2. Exclusões pendentes (relatórios -> vistorias -> agenda/sst/templates -> unidades -> clientes)
+      const deleteSteps = [
+        [pending.deleteReports, 'report', (k) => ReportService.flushPendingReportDelete(k)],
+        [pending.deleteOrders, 'order', (k) => DataService.flushPendingOrderDelete(k)],
+        [pending.deleteSchedules, 'schedule', (k) => OperationsService.flushPendingScheduleDelete(k)],
+        [pending.deleteSstItems, 'sst', (k) => OperationsService.flushPendingSstItemDelete(k)],
+        [pending.deleteTemplates, 'template', (k) => OperationsService.flushPendingTemplateDelete(k)],
+        [pending.deleteUnits, 'unit', (k) => DataService.flushPendingUnitDelete(k)],
+        [pending.deleteClients, 'client', (k) => DataService.flushPendingClientDelete(k)]
+      ];
+
+      for (const [keys, entity, fn] of deleteSteps) {
+        const res = await runQueueItems(keys, entity, fn);
+        synced += res.count;
+        errors.push(...res.errors);
       }
 
-      for (const orderId of pending.deleteOrders) {
-        try {
-          if (await DataService.flushPendingOrderDelete(orderId)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar exclusão da vistoria ${orderId}:`, err?.message || err);
-        }
-      }
+      // 3. Upserts ordenados por dependência (clientes -> unidades -> templates/agenda/sst -> vistorias -> relatórios)
+      const upsertSteps = [
+        [pending.upsertClients, 'client', (k) => DataService.flushPendingClient(k)],
+        [pending.upsertUnits, 'unit', (k) => DataService.flushPendingUnit(k)],
+        [pending.upsertTemplates, 'template', (k) => OperationsService.flushPendingTemplate(k)],
+        [pending.upsertSchedules, 'schedule', (k) => OperationsService.flushPendingSchedule(k)],
+        [pending.upsertSstItems, 'sst', (k) => OperationsService.flushPendingSstItem(k)],
+        [pending.upsertOrders, 'order', (k) => DataService.flushPendingOrder(k)],
+        [pending.upsertReports, 'report', (k) => ReportService.flushPendingReport(k)]
+      ];
 
-      for (const unitKey of pending.deleteUnits || []) {
-        try {
-          if (await DataService.flushPendingUnitDelete(unitKey)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar exclusão da unidade ${unitKey}:`, err?.message || err);
-        }
-      }
-
-      for (const clientKey of pending.deleteClients || []) {
-        try {
-          if (await DataService.flushPendingClientDelete(clientKey)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar exclusão do cliente ${clientKey}:`, err?.message || err);
-        }
-      }
-
-      // 3. Upserts de Clientes e Unidades (antes das vistorias/relatórios)
-      for (const clientKey of pending.upsertClients || []) {
-        try {
-          if (await DataService.flushPendingClient(clientKey)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar cliente ${clientKey}:`, err?.message || err);
-        }
-      }
-
-      for (const unitKey of pending.upsertUnits || []) {
-        try {
-          if (await DataService.flushPendingUnit(unitKey)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar unidade ${unitKey}:`, err?.message || err);
-        }
-      }
-
-      // 4. Upserts de Vistorias/Checklists (antes dos relatórios para garantir inspecao_id)
-      for (const orderId of pending.upsertOrders) {
-        try {
-          if (await DataService.flushPendingOrder(orderId)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar vistoria ${orderId}:`, err?.message || err);
-        }
-      }
-
-      // 5. Upserts de Relatórios Técnicos
-      for (const code of pending.upsertReports) {
-        try {
-          if (await ReportService.flushPendingReport(code)) synced += 1;
-        } catch (err) {
-          console.warn(`Falha ao sincronizar relatório ${code}:`, err?.message || err);
-        }
+      for (const [keys, entity, fn] of upsertSteps) {
+        const res = await runQueueItems(keys, entity, fn);
+        synced += res.count;
+        errors.push(...res.errors);
       }
 
       return {
         synced,
+        errors,
         pendingCount: OfflineStore.getPendingCount(),
         orders: DataService.getOrders(),
         reports: ReportService.getReports(),
         clients: DataService.getClients(),
         units: DataService.getUnits(),
+        templates: OperationsService.getTemplates(),
+        schedules: OperationsService.getSchedules(),
+        sstItems: OperationsService.getSstItems(),
         profile: DataService.getUserProfile()
       };
     })().finally(() => {

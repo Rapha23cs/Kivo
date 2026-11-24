@@ -14,9 +14,38 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('Service Worker indisponível:', err?.message || err);
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
     });
+
+    const notifyUpdateReady = (registration) => {
+      if (!registration?.waiting) return;
+      window.dispatchEvent(
+        new CustomEvent('kivo:sw-update', { detail: { registration } })
+      );
+    };
+
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((registration) => {
+        if (registration.waiting) {
+          notifyUpdateReady(registration);
+        }
+        registration.addEventListener('updatefound', () => {
+          const nextWorker = registration.installing;
+          if (!nextWorker) return;
+          nextWorker.addEventListener('statechange', () => {
+            if (nextWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              notifyUpdateReady(registration);
+            }
+          });
+        });
+      })
+      .catch((err) => {
+        console.warn('Service Worker indisponível:', err?.message || err);
+      });
   });
 }
-

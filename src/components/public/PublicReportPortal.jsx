@@ -305,6 +305,38 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
             </div>
           </section>
 
+          {/* Desempenho por Temática (quando presente em dados_extras) */}
+          {Array.isArray(report.desempenhoTematico) && report.desempenhoTematico.length > 0 && (
+            <section className="space-y-3 break-inside-avoid">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-emerald-600 pl-2.5">
+                Desempenho por Temática do Checklist ({report.desempenhoTematico.length} Áreas)
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                {report.desempenhoTematico.map((t) => (
+                  <div key={t.topic} className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900 truncate" title={t.topic}>{t.topic}</span>
+                      <span className="font-mono font-bold text-emerald-700">{t.percent}%</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          t.percent >= 85 ? 'bg-emerald-600' : t.percent >= 70 ? 'bg-amber-500' : 'bg-rose-600'
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(0, t.percent))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono text-slate-600">
+                      <span>Sim: {t.sim}</span>
+                      <span>Não: {t.nao}</span>
+                      <span>N/A: {t.na}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* 2. Desvios e Oportunidades */}
           <section className="space-y-3 break-inside-avoid">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-l-4 border-rose-600 pl-2.5">
