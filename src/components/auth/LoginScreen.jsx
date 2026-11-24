@@ -19,6 +19,7 @@ import {
   FileCheck2
 } from 'lucide-react';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
+import { validateStrongPassword, getPasswordScore } from '../../utils/securityHelpers';
 import LegalInfoModal from '../common/LegalInfoModal';
 import KivoLogo from '../common/KivoLogo';
 
@@ -74,7 +75,7 @@ export default function LoginScreen({
   onRecoveryComplete,
   onBackToLanding
 }) {
-  // Modos: 'login' | 'signup' | 'forgot' | 'recovery'
+  // Modos: 'login' | 'signup' | 'forgot' | 'recovery' | 'mfa'
   const [mode, setMode] = useState(initialMode);
 
   const [fullName, setFullName] = useState('');
@@ -84,6 +85,12 @@ export default function LoginScreen({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaFactorId, setMfaFactorId] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState(0);
+
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
@@ -91,11 +98,35 @@ export default function LoginScreen({
   const [legalTab, setLegalTab] = useState(null);
 
   useEffect(() => {
-    if (initialMode === 'recovery') {
-      setMode('recovery');
+    if (initialMode === 'recovery' || initialMode === 'mfa') {
+      setMode(initialMode);
       setFeedback(null);
     }
   }, [initialMode]);
+
+  useEffect(() => {
+    if (!cooldownUntil || cooldownUntil <= Date.now()) {
+      setCooldownSecondsLeft(0);
+      return undefined;
+    }
+    const tick = () => {
+      const rem = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+      setCooldownSecondsLeft(rem);
+      if (rem === 0) setCooldownUntil(0);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  useEffect(() => {
+    if (mode !== 'mfa' || mfaFactorId) return;
+    const { client } = getSupabaseClient();
+    client?.auth?.mfa?.listFactors?.().then(({ data }) => {
+      const totp = (data?.totp || []).find((f) => f.status === 'verified');
+      if (totp?.id) setMfaFactorId(totp.id);
+    });
+  }, [mode, mfaFactorId]);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -103,21 +134,17 @@ export default function LoginScreen({
     setTouched({});
     setPassword('');
     setConfirmPassword('');
+    setMfaCode('');
     setShowPassword(false);
   };
 
-  // Validações (Heurística 5 - Prevenção de erros)
+  // Validações reforçadas (mínimo 8 caracteres + letra + número/símbolo)
   const emailValid = EMAIL_REGEX.test(email.trim());
-  const passwordMinLen = password.length >= 6;
-  const passwordHasNumberOrSymbol = /[0-9!@#$%^&*(),.?":{}|<>]/.test(password);
+  const passwordPolicy = validateStrongPassword(password);
+  const passwordMinLen = passwordPolicy.valid;
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
   const nameValid = fullName.trim().length >= 3;
-
-  const passwordScore =
-    (password.length >= 6 ? 1 : 0) +
-    (password.length >= 8 ? 1 : 0) +
-    (/[A-Z]/.test(password) && /[a-z]/.test(password) ? 1 : 0) +
-    (passwordHasNumberOrSymbol ? 1 : 0);
+  const passwordScore = getPasswordScore(password);
 
   const strengthLabel =
     password.length === 0
@@ -145,6 +172,13 @@ export default function LoginScreen({
         text: `Link de confirmação reenviado para ${email.trim()}. Verifique sua caixa de entrada e spam.`
       });
     } catch (err) {
+      if (mode === 'login') {
+        const nextFails = failedAttempts + 1;
+        setFailedAttempts(nextFails);
+        if (nextFails >= 5) {
+          setCooldownUntil(Date.now() + 15000);
+        }
+      }
       const translated = translateAuthError(err);
       setFeedback({ type: 'error', ...translated });
     } finally {
@@ -156,7 +190,15 @@ export default function LoginScreen({
     e.preventDefault();
     setFeedback(null);
 
-    if (mode !== 'recovery' && !emailValid) {
+    if (mode === 'login' && cooldownSecondsLeft > 0) {
+      setFeedback({
+        type: 'error',
+        text: `Muitas tentativas incorretas. Aguarde ${cooldownSecondsLeft}s para tentar novamente.`
+      });
+      return;
+    }
+
+    if (mode !== 'recovery' && mode !== 'mfa' && !emailValid) {
       setTouched((t) => ({ ...t, email: true }));
       setFeedback({ type: 'error', text: 'Informe um endereço de e-mail válido.' });
       return;
@@ -170,7 +212,7 @@ export default function LoginScreen({
       }
       if (!passwordMinLen) {
         setTouched((t) => ({ ...t, password: true }));
-        setFeedback({ type: 'error', text: 'A senha precisa ter no mínimo 6 caracteres.' });
+        setFeedback({ type: 'error', text: 'A senha deve ter no mínimo 8 caracteres, com letras e números ou símbolos.' });
         return;
       }
       if (!passwordsMatch) {
@@ -182,11 +224,18 @@ export default function LoginScreen({
 
     if (mode === 'recovery') {
       if (!passwordMinLen) {
-        setFeedback({ type: 'error', text: 'A nova senha precisa ter no mínimo 6 caracteres.' });
+        setFeedback({ type: 'error', text: 'A nova senha deve ter no mínimo 8 caracteres, com letras e números ou símbolos.' });
         return;
       }
       if (!passwordsMatch) {
         setFeedback({ type: 'error', text: 'A confirmação da nova senha não confere.' });
+        return;
+      }
+    }
+
+    if (mode === 'mfa') {
+      if (mfaCode.trim().length < 6) {
+        setFeedback({ type: 'error', text: 'Informe o código de 6 dígitos do seu aplicativo autenticador.' });
         return;
       }
     }
@@ -198,12 +247,46 @@ export default function LoginScreen({
         throw new Error('Serviço de autenticação indisponível.');
       }
 
-      if (mode === 'login') {
+      if (mode === 'mfa') {
+        let factorId = mfaFactorId;
+        if (!factorId) {
+          const { data: fData } = await client.auth.mfa.listFactors();
+          factorId = (fData?.totp || []).find((f) => f.status === 'verified')?.id || '';
+        }
+        if (!factorId) {
+          throw new Error('Fator 2FA não encontrado. Faça login novamente.');
+        }
+        const { data: challengeData, error: chErr } = await client.auth.mfa.challenge({ factorId });
+        if (chErr) throw chErr;
+        const { error: verErr } = await client.auth.mfa.verify({
+          factorId,
+          challengeId: challengeData.id,
+          code: mfaCode.trim()
+        });
+        if (verErr) throw verErr;
+        const { data: sessionData } = await client.auth.getSession();
+        setFailedAttempts(0);
+        if (onLoginSuccess) onLoginSuccess(sessionData?.session);
+      } else if (mode === 'login') {
         const { data, error } = await client.auth.signInWithPassword({
           email: email.trim(),
           password
         });
         if (error) throw error;
+        setFailedAttempts(0);
+
+        const { data: aalData } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalData?.nextLevel === 'aal2' && aalData?.currentLevel !== 'aal2') {
+          const { data: factorsData } = await client.auth.mfa.listFactors();
+          const totpFactor = (factorsData?.totp || []).find((f) => f.status === 'verified');
+          if (totpFactor?.id) {
+            setMfaFactorId(totpFactor.id);
+            setMode('mfa');
+            setFeedback(null);
+            return;
+          }
+        }
+
         if (onLoginSuccess) onLoginSuccess(data.session);
       } else if (mode === 'signup') {
         const { data, error } = await client.auth.signUp({
@@ -251,6 +334,13 @@ export default function LoginScreen({
         }
       }
     } catch (err) {
+      if (mode === 'login') {
+        const nextFails = failedAttempts + 1;
+        setFailedAttempts(nextFails);
+        if (nextFails >= 5) {
+          setCooldownUntil(Date.now() + 15000);
+        }
+      }
       const translated = translateAuthError(err);
       setFeedback({ type: 'error', ...translated });
     } finally {
@@ -375,10 +465,16 @@ export default function LoginScreen({
 
             {/* Título Contextual */}
             <div className="space-y-1">
-              {(mode === 'forgot' || mode === 'recovery') && (
+              {(mode === 'forgot' || mode === 'recovery' || mode === 'mfa') && (
                 <button
                   type="button"
-                  onClick={() => switchMode('login')}
+                  onClick={async () => {
+                    if (mode === 'mfa') {
+                      const { client } = getSupabaseClient();
+                      await client?.auth?.signOut();
+                    }
+                    switchMode('login');
+                  }}
                   className="inline-flex items-center gap-1 text-xs text-[#A1A1AA] hover:text-[#F4F4F5] mb-2 transition"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -390,12 +486,14 @@ export default function LoginScreen({
                 {mode === 'signup' && 'Cadastro de novo técnico'}
                 {mode === 'forgot' && 'Recuperar acesso'}
                 {mode === 'recovery' && 'Definir nova senha'}
+                {mode === 'mfa' && 'Verificação em 2 Fatores (2FA)'}
               </h2>
               <p className="text-xs text-[#71717A]">
                 {mode === 'login' && 'Entre com seu e-mail e senha para gerenciar suas vistorias.'}
                 {mode === 'signup' && 'Crie sua conta individual para registrar inspeções no Kivo.'}
                 {mode === 'forgot' && 'Enviaremos um link seguro para você cadastrar uma nova senha.'}
-                {mode === 'recovery' && 'Escolha uma nova senha para concluir a recuperação da conta.'}
+                {mode === 'recovery' && 'Escolha uma nova senha forte para concluir a recuperação da conta.'}
+                {mode === 'mfa' && 'Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador.'}
               </p>
             </div>
 
@@ -480,7 +578,7 @@ export default function LoginScreen({
                 </>
               )}
 
-              {mode !== 'recovery' && (
+              {mode !== 'recovery' && mode !== 'mfa' && (
                 <div>
                   <label htmlFor="email" className="block text-[#A1A1AA] font-medium mb-1.5">
                     E-mail
@@ -509,7 +607,7 @@ export default function LoginScreen({
                 </div>
               )}
 
-              {mode !== 'forgot' && (
+              {mode !== 'forgot' && mode !== 'mfa' && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label htmlFor="password" className="text-[#A1A1AA] font-medium">
@@ -567,7 +665,7 @@ export default function LoginScreen({
                         ))}
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-[#71717A]">
-                        <span>Mínimo 6 caracteres {passwordMinLen ? '✓' : ''}</span>
+                        <span>Mín. 8 caracteres + letra + número/símbolo {passwordMinLen ? '✓' : ''}</span>
                         <span>Força: <strong className="text-[#E4E4E7] font-medium">{strengthLabel}</strong></span>
                       </div>
                     </div>
@@ -603,24 +701,48 @@ export default function LoginScreen({
                 </div>
               )}
 
+              {mode === 'mfa' && (
+                <div>
+                  <label htmlFor="mfaCode" className="block text-[#A1A1AA] font-medium mb-1.5">
+                    Código do Autenticador (6 dígitos)
+                  </label>
+                  <input
+                    id="mfaCode"
+                    type="text"
+                    inputMode="numeric"
+                    autoFocus
+                    maxLength={6}
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-lg tracking-[0.35em] text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                  />
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (mode === 'login' && cooldownSecondsLeft > 0)}
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold rounded-lg transition text-xs mt-2"
               >
                 {mode === 'login' && <LogIn className="w-4 h-4" />}
                 {mode === 'signup' && <UserPlus className="w-4 h-4" />}
                 {(mode === 'forgot' || mode === 'recovery') && <KeyRound className="w-4 h-4" />}
+                {mode === 'mfa' && <ShieldCheck className="w-4 h-4" />}
                 <span>
                   {loading
                     ? 'Processando...'
-                    : mode === 'login'
-                      ? 'Entrar no Kivo'
-                      : mode === 'signup'
-                        ? 'Criar minha conta'
-                        : mode === 'forgot'
-                          ? 'Enviar link de recuperação'
-                          : 'Salvar nova senha'}
+                    : mode === 'login' && cooldownSecondsLeft > 0
+                      ? `Aguarde ${cooldownSecondsLeft}s`
+                      : mode === 'login'
+                        ? 'Entrar no Kivo'
+                        : mode === 'signup'
+                          ? 'Criar minha conta'
+                          : mode === 'forgot'
+                            ? 'Enviar link de recuperação'
+                            : mode === 'mfa'
+                              ? 'Validar Código 2FA'
+                              : 'Salvar nova senha'}
                 </span>
               </button>
             </form>

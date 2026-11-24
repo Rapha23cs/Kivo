@@ -3,6 +3,7 @@ import { DEFAULT_USER_PROFILE } from '../data/mockInitialData';
 import { EMSERH_BASE_ITEMS } from '../data/emserhChecklistData';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseConfig';
 import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
+import { AuditService } from './auditService';
 
 const LS_PROFILE_KEY = 'kivo_user_profile';
 const LS_ORDERS_KEY = 'kivo_work_orders';
@@ -291,7 +292,7 @@ export const DataService = {
   },
 
   // ---- SESSÃO MULTI-USUÁRIO & PERFIL PERSISTIDO NO SUPABASE AUTH ----
-  syncSessionUser(user) {
+  async syncSessionUser(user) {
     if (!user) {
       clearOrderSyncSchedulers();
       ordersMemoryCache = null;
@@ -304,7 +305,8 @@ export const DataService = {
       localStorage.removeItem(LS_UNITS_KEY);
       localStorage.removeItem(LS_PROFILE_KEY);
       clearCrossServiceCaches();
-      OfflineStore.clearAllDataCaches();
+      AuditService.clearLocalLogs();
+      await OfflineStore.clearAllDataCaches();
       return null;
     }
 

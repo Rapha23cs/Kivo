@@ -13,7 +13,8 @@ import {
   Calendar,
   ShieldAlert,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Lock
 } from 'lucide-react';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 
@@ -33,6 +34,8 @@ export default function Header({
   onSyncNow,
   alerts = [],
   onSelectAlert,
+  hasScreenLockPin = false,
+  onLockScreen,
   theme = 'dark',
   onToggleTheme
 }) {
@@ -159,6 +162,18 @@ export default function Header({
             <Cloud className="w-3.5 h-3.5 text-[#34D399]" />
             <span>Nuvem</span>
           </span>
+        )}
+
+        {hasScreenLockPin && onLockScreen && (
+          <button
+            type="button"
+            onClick={onLockScreen}
+            className="p-2 bg-[#141518] hover:bg-[#1C1D22] border border-[#232429] rounded-lg text-[#A1A1AA] hover:text-[#34D399] transition shrink-0"
+            title="Bloquear tela rapidamente (PIN)"
+            aria-label="Bloquear tela"
+          >
+            <Lock className="w-4 h-4" />
+          </button>
         )}
 
         {onToggleTheme && (

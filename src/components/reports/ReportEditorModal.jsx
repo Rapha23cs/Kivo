@@ -25,7 +25,8 @@ import {
   ExternalLink,
   ArrowRight,
   ArrowLeft,
-  Layers
+  Layers,
+  Lock
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -88,6 +89,10 @@ export default function ReportEditorModal({
 
   const initialResume = getInitialResume();
   const [draft, setDraft] = useState(report);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareExpiresDays, setShareExpiresDays] = useState(30);
+  const [sharePin, setSharePin] = useState('');
+  const [clearSharePin, setClearSharePin] = useState(false);
   const [activeTab, setActiveTab] = useState(initialResume.activeTab || 'cover'); // cover | deviations | photos | conclusion
   const initialSections = getPhotoSectionsForReport(report);
   const [selectedPhotoSection, setSelectedPhotoSection] = useState(
@@ -441,23 +446,51 @@ export default function ReportEditorModal({
     toast.success({ title: 'Resumo copiado!', message: 'Pronto para colar no WhatsApp ou e-mail.' });
   };
 
-  const handleTogglePublicShare = async () => {
+  const handleOpenShareConfig = () => {
+    if (draft.publicExpiresAt) {
+      const diffDays = Math.ceil((new Date(draft.publicExpiresAt).getTime() - Date.now()) / 86400000);
+      setShareExpiresDays(diffDays > 45 ? 90 : diffDays > 10 ? 30 : 7);
+    } else if (draft.publicEnabled) {
+      setShareExpiresDays(0);
+    } else {
+      setShareExpiresDays(30);
+    }
+    setSharePin('');
+    setClearSharePin(false);
+    setShowShareModal(true);
+  };
+
+  const handleSavePublicShare = async (nextEnabled) => {
+    if (nextEnabled && sharePin.trim() && sharePin.trim().length < 4) {
+      toast.warning({
+        title: 'PIN muito curto',
+        message: 'Informe um PIN com pelo menos 4 caracteres/dígitos ou deixe vazio.'
+      });
+      return;
+    }
+
     setSharingLoading(true);
     try {
-      const nextEnabled = !draft.publicEnabled;
-      const result = await ReportService.setPublicShare(latestDraftRef.current, nextEnabled);
+      const result = await ReportService.setPublicShare(latestDraftRef.current, nextEnabled, {
+        expiresInDays: shareExpiresDays,
+        pin: sharePin.trim(),
+        clearPin: clearSharePin
+      });
       if (!result) return;
 
       latestDraftRef.current = result.report;
       isDirtyRef.current = false;
       setDraft(result.report);
       onLocalDraftUpdate?.(ReportService.getReports());
+      setShowShareModal(false);
 
       if (nextEnabled) {
         await copyTextToClipboard(result.shareUrl);
         toast.success({
           title: 'Link público ativado e copiado!',
-          message: 'O cliente já pode visualizar este laudo online ou pelo QR Code do PDF.'
+          message: shareExpiresDays > 0
+            ? `Válido por ${shareExpiresDays} dia(s)${result.report.hasPublicPin ? ' • Protegido por PIN' : ''}.`
+            : `Sem prazo de expiração${result.report.hasPublicPin ? ' • Protegido por PIN' : ''}.`
         });
       } else {
         toast.info({
@@ -691,16 +724,20 @@ export default function ReportEditorModal({
 
               <button
                 type="button"
-                onClick={handleTogglePublicShare}
+                onClick={handleOpenShareConfig}
                 disabled={sharingLoading}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition disabled:opacity-50 ${
                   draft.publicEnabled
                     ? 'bg-[#122620] hover:bg-[#17322A] text-[#34D399] border-[#2EB88A]/40'
                     : 'bg-[#1C1D22] hover:bg-[#25272E] text-[#E4E4E7] border-[#2D2F36]'
                 }`}
-                title={draft.publicEnabled ? 'Portal público ativo (clique para desativar)' : 'Gerar link público somente leitura para o cliente'}
+                title="Configurar validade, PIN e ativação do link público para o cliente"
               >
-                <Globe className="w-3.5 h-3.5 text-[#34D399]" />
+                {draft.hasPublicPin && draft.publicEnabled ? (
+                  <Lock className="w-3.5 h-3.5 text-[#34D399]" />
+                ) : (
+                  <Globe className="w-3.5 h-3.5 text-[#34D399]" />
+                )}
                 <span className="hidden sm:inline">
                   {sharingLoading ? 'Atualizando...' : draft.publicEnabled ? 'Link Ativo' : 'Link Cliente'}
                 </span>
@@ -1883,6 +1920,116 @@ export default function ReportEditorModal({
         onChangeIndex={setLightboxIndex}
         onClose={() => setLightboxIndex(-1)}
       />
+
+      {showShareModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-[#111214] border border-[#2D2F36] rounded-2xl shadow-2xl overflow-hidden text-xs">
+            <div className="px-5 py-4 border-b border-[#1F2024] bg-[#141518] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Globe className="w-4 h-4 text-[#34D399]" />
+                <div>
+                  <h4 className="font-semibold text-[#F4F4F5] text-sm">Link Público do Cliente</h4>
+                  <p className="text-[11px] text-[#71717A]">{draft.codigoRelatorio}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShareModal(false)}
+                className="p-1.5 text-[#71717A] hover:text-[#F4F4F5] rounded-lg hover:bg-[#1C1D22]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[#A1A1AA] font-medium mb-1.5">
+                  Validade do Link Compartilhado
+                </label>
+                <select
+                  value={shareExpiresDays}
+                  onChange={(e) => setShareExpiresDays(Number(e.target.value))}
+                  className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                >
+                  <option value={7}>7 dias (Alta segurança)</option>
+                  <option value={30}>30 dias (Recomendado)</option>
+                  <option value={90}>90 dias</option>
+                  <option value={0}>Sem expiração automática</option>
+                </select>
+                {draft.publicEnabled && draft.publicExpiresAt && (
+                  <p className="text-[11px] text-[#71717A] mt-1 font-mono">
+                    Expira atualmente em: {new Date(draft.publicExpiresAt).toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[#A1A1AA] font-medium mb-1.5">
+                  Código PIN de Acesso <span className="text-[#71717A]">(opcional, mín. 4 caracteres)</span>
+                </label>
+                <input
+                  type="password"
+                  value={sharePin}
+                  onChange={(e) => {
+                    setSharePin(e.target.value);
+                    if (e.target.value) setClearSharePin(false);
+                  }}
+                  placeholder={draft.hasPublicPin ? 'PIN ativo (deixe vazio para manter)' : 'Ex: 4829'}
+                  maxLength={12}
+                  className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] font-mono focus:border-[#2EB88A] focus:outline-none"
+                />
+                {draft.hasPublicPin && (
+                  <label className="inline-flex items-center gap-1.5 mt-2 text-[11px] text-[#FB7185] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={clearSharePin}
+                      onChange={(e) => {
+                        setClearSharePin(e.target.checked);
+                        if (e.target.checked) setSharePin('');
+                      }}
+                      className="accent-[#F43F5E]"
+                    />
+                    Remover exigência de PIN deste link
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-[#1F2024] bg-[#141518] flex items-center justify-between gap-2 flex-wrap">
+              {draft.publicEnabled ? (
+                <button
+                  type="button"
+                  disabled={sharingLoading}
+                  onClick={() => handleSavePublicShare(false)}
+                  className="px-3 py-2 bg-[#221216] hover:bg-[#2E161B] text-[#FB7185] border border-[#F43F5E]/40 rounded-lg font-medium transition"
+                >
+                  Revogar Link
+                </button>
+              ) : (
+                <span className="text-[11px] text-[#71717A]">Somente leitura para o cliente</span>
+              )}
+
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowShareModal(false)}
+                  className="px-3 py-2 text-[#A1A1AA] hover:text-[#F4F4F5] rounded-lg transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={sharingLoading}
+                  onClick={() => handleSavePublicShare(true)}
+                  className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold rounded-lg transition"
+                >
+                  {sharingLoading ? 'Salvando...' : draft.publicEnabled ? 'Atualizar e Copiar' : 'Ativar e Copiar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 

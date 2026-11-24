@@ -13,6 +13,9 @@ import { OperationsService, getExpiryStatus } from './supabase/operationsService
 import { buildSstChecklist } from './data/sstChecklistData';
 import { getDisciplineMeta } from './data/workflowsConfig';
 import { applyAccentCssVariables } from './utils/themePalette';
+import { AuditService } from './supabase/auditService';
+import { hashPinSha256 } from './utils/securityHelpers';
+import { Lock } from 'lucide-react';
 
 const DashboardOverview = lazy(() => import('./components/dashboard/DashboardOverview'));
 const WorkOrderList = lazy(() => import('./components/workOrders/WorkOrderList'));
@@ -164,7 +167,35 @@ export default function App() {
   const supabaseEnabled = isSupabaseConfigured();
   const [authChecked, setAuthChecked] = useState(!supabaseEnabled);
   const [session, setSession] = useState(null);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(false);
+
+  const [hasScreenLockPin, setHasScreenLockPin] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem('kivo_screen_pin_hash'));
+    } catch {
+      return false;
+    }
+  });
+  const [screenLockMinutes, setScreenLockMinutes] = useState(() => {
+    try {
+      return Number(localStorage.getItem('kivo_screen_lock_minutes') || '15');
+    } catch {
+      return 15;
+    }
+  });
+  const [isScreenLocked, setIsScreenLocked] = useState(false);
+  const [unlockPinInput, setUnlockPinInput] = useState('');
+  const [unlockPinError, setUnlockPinError] = useState('');
+
+  const refreshScreenLockConfig = () => {
+    try {
+      setHasScreenLockPin(Boolean(localStorage.getItem('kivo_screen_pin_hash')));
+      setScreenLockMinutes(Number(localStorage.getItem('kivo_screen_lock_minutes') || '15'));
+    } catch {
+      // ignora
+    }
+  };
 
   const [activeTab, setActiveTab] = useState(initialRoute.initialTab);
   const [isNotFound, setIsNotFound] = useState(initialRoute.initialNotFound);
@@ -384,6 +415,52 @@ export default function App() {
   }, [supabaseEnabled]);
 
   useEffect(() => {
+    if (!hasScreenLockPin || !screenLockMinutes || screenLockMinutes <= 0 || isScreenLocked) {
+      return undefined;
+    }
+    if (supabaseEnabled && (!session || mfaRequired)) {
+      return undefined;
+    }
+    let timerId = null;
+    const resetTimer = () => {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(() => {
+        setUnlockPinInput('');
+        setUnlockPinError('');
+        setIsScreenLocked(true);
+      }, screenLockMinutes * 60 * 1000);
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart'];
+    events.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }));
+    resetTimer();
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      events.forEach((ev) => window.removeEventListener(ev, resetTimer));
+    };
+  }, [hasScreenLockPin, screenLockMinutes, isScreenLocked, supabaseEnabled, session, mfaRequired]);
+
+  const handleUnlockScreen = async (e) => {
+    e.preventDefault();
+    setUnlockPinError('');
+    try {
+      const savedHash = localStorage.getItem('kivo_screen_pin_hash');
+      if (!savedHash) {
+        setIsScreenLocked(false);
+        return;
+      }
+      const enteredHash = await hashPinSha256(unlockPinInput);
+      if (enteredHash === savedHash) {
+        setIsScreenLocked(false);
+        setUnlockPinInput('');
+      } else {
+        setUnlockPinError('PIN incorreto.');
+      }
+    } catch {
+      setUnlockPinError('Falha ao validar PIN.');
+    }
+  };
+
+  useEffect(() => {
     if (!supabaseEnabled) {
       loadAllData();
       return;
@@ -395,22 +472,36 @@ export default function App() {
       return;
     }
 
-    client.auth.getSession().then(({ data }) => {
+    const checkMfaStatus = async (activeSess) => {
+      if (!activeSess || !client?.auth?.mfa) return false;
+      try {
+        const { data: aal } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+        return Boolean(aal?.nextLevel === 'aal2' && aal?.currentLevel !== 'aal2');
+      } catch {
+        return false;
+      }
+    };
+
+    client.auth.getSession().then(async ({ data }) => {
       const activeSession = data?.session || null;
       if (activeSession?.user) {
         DataService.syncSessionUser(activeSession.user);
       }
+      const needsMfa = await checkMfaStatus(activeSession);
+      setMfaRequired(needsMfa);
       setSession(activeSession);
       setAuthChecked(true);
     });
 
-    const { data: authListener } = client.auth.onAuthStateChange((event, nextSession) => {
+    const { data: authListener } = client.auth.onAuthStateChange(async (event, nextSession) => {
       if (event === 'PASSWORD_RECOVERY') {
         setRecoveryMode(true);
       }
       if (nextSession?.user) {
         DataService.syncSessionUser(nextSession.user);
       }
+      const needsMfa = await checkMfaStatus(nextSession);
+      setMfaRequired(needsMfa);
       setSession(nextSession);
       setAuthChecked(true);
     });
@@ -421,18 +512,20 @@ export default function App() {
   }, [supabaseEnabled]);
 
   useEffect(() => {
-    if (!supabaseEnabled || session) {
+    if (!supabaseEnabled || (session && !mfaRequired)) {
       loadAllData();
     }
-  }, [supabaseEnabled, session]);
+  }, [supabaseEnabled, session, mfaRequired]);
 
   const handleSignOut = async () => {
     const { client } = getSupabaseClient();
     await client?.auth.signOut();
-    DataService.syncSessionUser(null);
+    await DataService.syncSessionUser(null);
     ReportService.clearLocalCache();
     OperationsService.clearLocalCaches();
     setSession(null);
+    setMfaRequired(false);
+    setIsScreenLocked(false);
     setOrders([]);
     setReports([]);
     setClients([]);
@@ -716,17 +809,18 @@ export default function App() {
     );
   }
 
-  if (supabaseEnabled && !session) {
+  if (supabaseEnabled && (!session || mfaRequired)) {
     return (
       <Suspense fallback={<AppLoadingSkeleton />}>
-        {publicAuthMode ? (
+        {publicAuthMode || mfaRequired ? (
           <LoginScreen
-            initialMode={publicAuthMode}
+            initialMode={mfaRequired ? 'mfa' : publicAuthMode}
             onBackToLanding={() => navigatePublicAuth(null)}
             onLoginSuccess={(nextSession) => {
               if (nextSession?.user) {
                 DataService.syncSessionUser(nextSession.user);
               }
+              setMfaRequired(false);
               setSession(nextSession);
               if (typeof window !== 'undefined' && ['/login', '/entrar', '/cadastro'].includes(window.location.pathname)) {
                 window.history.replaceState({}, '', '/');
@@ -812,6 +906,7 @@ export default function App() {
 
   const handleDeleteOrder = async (order) => {
     const updatedList = await DataService.deleteOrder(order);
+    AuditService.log('inspection.deleted', 'inspecao', order.id, { unidade: order.hospitalName });
     setOrders(updatedList);
     if (selectedOrder?.id === order.id) {
       setSelectedOrder(null);
@@ -973,6 +1068,12 @@ export default function App() {
           }}
           theme={theme}
           onToggleTheme={toggleTheme}
+          hasScreenLockPin={hasScreenLockPin}
+          onLockScreen={() => {
+            setUnlockPinInput('');
+            setUnlockPinError('');
+            setIsScreenLocked(true);
+          }}
         />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8">
@@ -1093,6 +1194,7 @@ export default function App() {
                   }}
                   onDeleteReport={async (rep) => {
                     const next = await ReportService.deleteReport(rep);
+                    AuditService.log('report.deleted', 'relatorio', rep.codigoRelatorio, { unidade: rep.unidade });
                     setReports(next);
                   }}
                 />
@@ -1154,6 +1256,7 @@ export default function App() {
             isOnline={isOnline}
             pendingSyncCount={pendingSyncCount}
             onSyncNow={handleSyncNow}
+            onScreenLockConfigChange={refreshScreenLockConfig}
             stats={{
               clients: clients.length,
               units: units.length,
@@ -1199,6 +1302,56 @@ export default function App() {
       </Suspense>
 
       <PwaInstallBanner />
+
+      {isScreenLocked && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#0B0B0D]/95 backdrop-blur-xl animate-fade-in">
+          <form
+            onSubmit={handleUnlockScreen}
+            className="w-full max-w-xs bg-[#141518] border border-[#2D2F36] rounded-2xl p-6 space-y-4 shadow-2xl text-center"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-[#122620] border border-[#2EB88A]/40 text-[#34D399] flex items-center justify-center mx-auto">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#F4F4F5]">Sessão Bloqueada</h3>
+              <p className="text-[11px] text-[#71717A] mt-0.5">
+                {userProfile?.name || 'Auditor Técnico'} • Digite seu PIN para retomar
+              </p>
+            </div>
+            <div>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                maxLength={6}
+                value={unlockPinInput}
+                onChange={(e) => setUnlockPinInput(e.target.value.replace(/\D/g, ''))}
+                placeholder="••••"
+                className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-lg tracking-[0.4em] text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+              />
+              {unlockPinError && (
+                <p className="text-[11px] text-[#FB7185] mt-1.5">{unlockPinError}</p>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={!unlockPinInput}
+              className="w-full py-2.5 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold rounded-lg text-xs transition"
+            >
+              Desbloquear
+            </button>
+            {supabaseEnabled && (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="text-[11px] text-[#71717A] hover:text-[#FB7185] transition"
+              >
+                Encerrar sessão neste aparelho
+              </button>
+            )}
+          </form>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import {
   removeStorageFilesByUrls
 } from './dataService';
 import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
+import { generateSecureUuid } from '../utils/securityHelpers';
+import { AuditService } from './auditService';
 
 const LS_REPORTS_KEY = 'kivo_environmental_reports';
 const LS_ACTIVE_UID_KEY = 'kivo_active_supabase_uid';
@@ -767,6 +769,8 @@ export const ReportService = {
         publicToken: row.public_token || null,
         publicEnabled: Boolean(row.public_enabled),
         publicSharedAt: row.public_shared_at || null,
+        publicExpiresAt: row.public_expires_at || null,
+        hasPublicPin: Boolean(row.public_pin_hash),
         desvios: (row.relatorio_desvios || [])
           .sort((a, b) => a.numero - b.numero)
           .map((d) => ({
@@ -910,7 +914,10 @@ export const ReportService = {
       },
       ...(isUuid(report.publicToken) ? { public_token: report.publicToken } : {}),
       public_enabled: Boolean(report.publicEnabled),
-      ...(report.publicSharedAt ? { public_shared_at: report.publicSharedAt } : {})
+      ...(report.publicSharedAt ? { public_shared_at: report.publicSharedAt } : {}),
+      public_expires_at: report.publicExpiresAt || null,
+      ...(report.pendingPublicPin ? { public_pin: String(report.pendingPublicPin).trim() } : {}),
+      ...(report.clearPublicPin ? { public_pin_action: 'clear' } : {})
     };
 
     const desviosPayload = (report.desvios || [])
@@ -971,6 +978,12 @@ export const ReportService = {
       throw new Error(rpcError.message);
     }
 
+    const {
+      public_pin: _pp,
+      public_pin_action: _ppa,
+      ...directTableHeader
+    } = headerPayload;
+
     const upsertHeader = async (payload) => {
       let result = await client
         .from('relatorios_inspecao')
@@ -988,7 +1001,7 @@ export const ReportService = {
       return result;
     };
 
-    let { data: savedHeader, error: headerError } = await upsertHeader(headerPayload);
+    let { data: savedHeader, error: headerError } = await upsertHeader(directTableHeader);
 
     if (
       headerError &&
@@ -1006,8 +1019,9 @@ export const ReportService = {
         public_token: _pt,
         public_enabled: _pe,
         public_shared_at: _ps,
+        public_expires_at: _px,
         ...fallbackHeader
-      } = headerPayload;
+      } = directTableHeader;
       const retry = await upsertHeader(fallbackHeader);
       savedHeader = retry.data;
       headerError = retry.error;
@@ -1040,29 +1054,32 @@ export const ReportService = {
     return { ...savedHeader, inspecao_id: inspecaoId };
   },
 
-  async setPublicShare(report, enabled = true) {
+  async setPublicShare(report, enabled = true, options = {}) {
     if (!report) return null;
 
-    const generateToken = () => {
-      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-      }
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    };
+    const { expiresInDays = 30, pin = '', clearPin = false } = options || {};
+    const cleanPin = String(pin || '').trim();
+    const publicToken = isUuid(report.publicToken) ? report.publicToken : generateSecureUuid();
 
-    const publicToken = isUuid(report.publicToken) ? report.publicToken : generateToken();
+    const parsedDays = Number(expiresInDays);
+    const publicExpiresAt = enabled
+      ? Number.isFinite(parsedDays) && parsedDays > 0
+        ? new Date(Date.now() + parsedDays * 86400 * 1000).toISOString()
+        : null
+      : report.publicExpiresAt || null;
+
     let updated = {
       ...report,
       publicToken,
       publicEnabled: Boolean(enabled),
-      publicSharedAt: enabled ? (report.publicSharedAt || new Date().toISOString()) : report.publicSharedAt || null
+      publicSharedAt: enabled ? (report.publicSharedAt || new Date().toISOString()) : report.publicSharedAt || null,
+      publicExpiresAt,
+      hasPublicPin: cleanPin ? true : clearPin ? false : Boolean(report.hasPublicPin),
+      pendingPublicPin: cleanPin || undefined,
+      clearPublicPin: Boolean(clearPin)
     };
 
-    // Ao ativar compartilhamento público online, renova Signed URLs das mídias para 1 ano (365 dias)
+    // Ao ativar compartilhamento público online, renova Signed URLs das mídias respeitando a validade (máx. 90 dias)
     if (enabled && isSupabaseConfigured() && navigator.onLine !== false) {
       try {
         const { client } = getSupabaseClient();
@@ -1071,7 +1088,8 @@ export const ReportService = {
             updated.fachadaUrl,
             ...(updated.registrosFotograficos || []).map((f) => f.fotoUrl)
           ].filter(Boolean);
-          const refreshedMap = await refreshSignedMediaUrls(client, urls, 60 * 60 * 24 * 365);
+          const ttlDays = Number.isFinite(parsedDays) && parsedDays > 0 ? Math.min(90, parsedDays) : 90;
+          const refreshedMap = await refreshSignedMediaUrls(client, urls, ttlDays * 86400);
           if (refreshedMap.size > 0) {
             updated = {
               ...updated,
@@ -1089,18 +1107,41 @@ export const ReportService = {
     }
 
     await this.saveReport(updated);
+    // Remove campos transitórios de envio de PIN antes de persistir no cache local
+    const sanitizedUpdated = { ...updated };
+    delete sanitizedUpdated.pendingPublicPin;
+    delete sanitizedUpdated.clearPublicPin;
+    saveStoredReports(
+      getStoredReports().map((r) => (r.codigoRelatorio === sanitizedUpdated.codigoRelatorio ? sanitizedUpdated : r))
+    );
+
+    AuditService.log(
+      enabled ? 'report.public_enabled' : 'report.public_revoked',
+      'relatorio',
+      report.codigoRelatorio,
+      { expiresAt: publicExpiresAt, hasPin: Boolean(sanitizedUpdated.hasPublicPin) }
+    );
+
     const shareUrl = buildPublicReportUrl(publicToken);
 
-    return { report: updated, shareUrl };
+    return { report: sanitizedUpdated, shareUrl };
   },
 
-  async fetchPublicReport(token) {
+  async fetchPublicReport(token, pin = '') {
     if (!isUuid(token)) return null;
 
     if (isSupabaseConfigured() && navigator.onLine !== false) {
       const { client } = getSupabaseClient();
       if (client) {
-        const { data, error } = await client.rpc('get_public_report', { p_token: token });
+        let { data, error } = await client.rpc('get_public_report', {
+          p_token: token,
+          p_pin: String(pin || '').trim() || null
+        });
+        if (error && (error.code === '42883' || error.code === 'PGRST202')) {
+          const fallback = await client.rpc('get_public_report', { p_token: token });
+          data = fallback.data;
+          error = fallback.error;
+        }
         if (!error && data) {
           return data;
         }
@@ -1114,6 +1155,10 @@ export const ReportService = {
     const localMatch = getStoredReports().find(
       (r) => r.publicEnabled && r.publicToken === token
     );
-    return localMatch || null;
+    if (!localMatch) return null;
+    if (localMatch.publicExpiresAt && new Date(localMatch.publicExpiresAt).getTime() < Date.now()) {
+      return { expired: true, codigoRelatorio: localMatch.codigoRelatorio };
+    }
+    return localMatch;
   }
 };

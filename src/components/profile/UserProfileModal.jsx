@@ -15,11 +15,17 @@ import {
   Upload,
   PenTool,
   Trash2,
-  Palette
+  Palette,
+  QrCode,
+  History,
+  KeyRound
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
+import { AuditService } from '../../supabase/auditService';
 import { compressImageToDataUrl } from '../../supabase/dataService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
+import { validateStrongPassword, hashPinSha256 } from '../../utils/securityHelpers';
 import { KIVO_ACCENT_PRESETS } from '../../utils/themePalette';
 import { useFeedback } from '../common/FeedbackProvider';
 
@@ -32,6 +38,7 @@ export default function UserProfileModal({
   isOnline = true,
   pendingSyncCount = 0,
   onSyncNow,
+  onScreenLockConfigChange,
   stats = { orders: 0, reports: 0, units: 0, clients: 0 }
 }) {
   if (!isOpen) return null;
@@ -50,10 +57,57 @@ export default function UserProfileModal({
 
   const [syncingNow, setSyncingNow] = useState(false);
 
+  // MFA (2FA TOTP) + Audit Logs + Screen Lock PIN
+  const [mfaFactors, setMfaFactors] = useState([]);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaEnrollData, setMfaEnrollData] = useState(null); // { id, secret, qrDataUrl }
+  const [mfaVerifyCode, setMfaVerifyCode] = useState('');
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [showAuditLogs, setShowAuditLogs] = useState(false);
+
+  const [screenPinInput, setScreenPinInput] = useState('');
+  const [screenLockMinutes, setScreenLockMinutes] = useState(() => {
+    try {
+      return localStorage.getItem('kivo_screen_lock_minutes') || '15';
+    } catch {
+      return '15';
+    }
+  });
+  const [hasScreenPin, setHasScreenPin] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem('kivo_screen_pin_hash'));
+    } catch {
+      return false;
+    }
+  });
+  const [deviceFeedback, setDeviceFeedback] = useState(null);
+
   useEffect(() => {
     setProfile({ ...userProfile });
     setNewEmail(userProfile?.email || '');
   }, [userProfile, isOpen]);
+
+  const loadMfaFactors = async () => {
+    if (!isOnline) return;
+    const { client } = getSupabaseClient();
+    if (!client?.auth?.mfa) return;
+    setMfaLoading(true);
+    try {
+      const { data } = await client.auth.mfa.listFactors();
+      setMfaFactors((data?.totp || []).filter((f) => f.status === 'verified'));
+    } catch {
+      // ignora caso indisponível
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'security') {
+      loadMfaFactors();
+      AuditService.listRecent(15).then(setAuditLogs);
+    }
+  }, [isOpen, activeTab]);
 
   const handleSubmitProfile = async (e) => {
     e.preventDefault();
@@ -93,8 +147,12 @@ export default function UserProfileModal({
       setSecurityFeedback({ type: 'error', text: 'Conecte-se à internet para alterar sua senha.' });
       return;
     }
-    if (newPassword.length < 6) {
-      setSecurityFeedback({ type: 'error', text: 'A nova senha deve ter pelo menos 6 caracteres.' });
+    const pwdCheck = validateStrongPassword(newPassword);
+    if (!pwdCheck.valid) {
+      setSecurityFeedback({
+        type: 'error',
+        text: 'A nova senha deve ter no mínimo 8 caracteres, combinando letras e números ou símbolos.'
+      });
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -142,6 +200,130 @@ export default function UserProfileModal({
       setSecurityFeedback({ type: 'error', text: err?.message || 'Erro ao solicitar troca de e-mail.' });
     } finally {
       setSecuritySaving(false);
+    }
+  };
+
+  const handleStartMfaEnroll = async () => {
+    setSecurityFeedback(null);
+    if (!isOnline) {
+      setSecurityFeedback({ type: 'error', text: 'Conecte-se à internet para ativar a verificação em 2 fatores.' });
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      const { client } = getSupabaseClient();
+      if (!client?.auth?.mfa) throw new Error('MFA indisponível neste cliente.');
+      const { data, error } = await client.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: `Kivo Authenticator (${new Date().toLocaleDateString('pt-BR')})`
+      });
+      if (error) throw error;
+      const qrDataUrl = await QRCode.toDataURL(data.totp.uri, {
+        width: 180,
+        margin: 1,
+        color: { dark: '#0F172A', light: '#FFFFFF' }
+      });
+      setMfaEnrollData({
+        id: data.id,
+        secret: data.totp.secret,
+        qrDataUrl
+      });
+      setMfaVerifyCode('');
+    } catch (err) {
+      setSecurityFeedback({ type: 'error', text: err?.message || 'Erro ao iniciar configuração 2FA.' });
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleConfirmMfaEnroll = async (e) => {
+    e.preventDefault();
+    if (!mfaEnrollData?.id || mfaVerifyCode.trim().length < 6) return;
+    setMfaLoading(true);
+    setSecurityFeedback(null);
+    try {
+      const { client } = getSupabaseClient();
+      const { data: chData, error: chErr } = await client.auth.mfa.challenge({
+        factorId: mfaEnrollData.id
+      });
+      if (chErr) throw chErr;
+      const { error: verErr } = await client.auth.mfa.verify({
+        factorId: mfaEnrollData.id,
+        challengeId: chData.id,
+        code: mfaVerifyCode.trim()
+      });
+      if (verErr) throw verErr;
+      setMfaEnrollData(null);
+      setMfaVerifyCode('');
+      await loadMfaFactors();
+      AuditService.log('auth.mfa_enabled', 'auth', 'totp');
+      setSecurityFeedback({ type: 'success', text: 'Autenticação em 2 Fatores (2FA) ativada com sucesso!' });
+    } catch (err) {
+      setSecurityFeedback({ type: 'error', text: err?.message || 'Código inválido. Verifique seu aplicativo autenticador.' });
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleDisableMfa = async (factorId) => {
+    const ok = await confirm({
+      title: 'Desativar verificação em 2 fatores',
+      message: 'Sua conta voltará a exigir apenas e-mail e senha ao entrar em novos dispositivos.',
+      confirmLabel: 'Desativar 2FA',
+      variant: 'warning'
+    });
+    if (!ok) return;
+    setMfaLoading(true);
+    try {
+      const { client } = getSupabaseClient();
+      const { error } = await client.auth.mfa.unenroll({ factorId });
+      if (error) throw error;
+      await loadMfaFactors();
+      AuditService.log('auth.mfa_disabled', 'auth', 'totp');
+      setSecurityFeedback({ type: 'success', text: 'Verificação em 2 Fatores desativada.' });
+    } catch (err) {
+      setSecurityFeedback({ type: 'error', text: err?.message || 'Erro ao desativar 2FA.' });
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleSaveScreenPin = async (e) => {
+    e.preventDefault();
+    setDeviceFeedback(null);
+    const clean = screenPinInput.trim();
+    if (!clean && !hasScreenPin) {
+      setDeviceFeedback({ type: 'error', text: 'Digite um PIN numérico de 4 a 6 dígitos.' });
+      return;
+    }
+    if (clean && !/^\d{4,6}$/.test(clean)) {
+      setDeviceFeedback({ type: 'error', text: 'O PIN de tela deve ter de 4 a 6 dígitos numéricos.' });
+      return;
+    }
+    try {
+      if (clean) {
+        const hash = await hashPinSha256(clean);
+        localStorage.setItem('kivo_screen_pin_hash', hash);
+        setHasScreenPin(true);
+        setScreenPinInput('');
+      }
+      localStorage.setItem('kivo_screen_lock_minutes', screenLockMinutes);
+      onScreenLockConfigChange?.();
+      setDeviceFeedback({ type: 'success', text: 'Bloqueio rápido de tela configurado neste dispositivo.' });
+    } catch {
+      setDeviceFeedback({ type: 'error', text: 'Não foi possível salvar a configuração local.' });
+    }
+  };
+
+  const handleRemoveScreenPin = () => {
+    try {
+      localStorage.removeItem('kivo_screen_pin_hash');
+      setHasScreenPin(false);
+      setScreenPinInput('');
+      onScreenLockConfigChange?.();
+      setDeviceFeedback({ type: 'success', text: 'Bloqueio por PIN removido deste aparelho.' });
+    } catch {
+      // ignora
     }
   };
 
@@ -497,12 +679,12 @@ export default function UserProfileModal({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[#A1A1AA] mb-1">Nova Senha (mín. 6 caracteres)</label>
+                    <label className="block text-[#A1A1AA] mb-1">Nova Senha (mín. 8 caracteres)</label>
                     <input
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="••••••"
+                      placeholder="••••••••"
                       className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                     />
                   </div>
@@ -512,7 +694,7 @@ export default function UserProfileModal({
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••"
+                      placeholder="••••••••"
                       className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                     />
                   </div>
@@ -553,6 +735,138 @@ export default function UserProfileModal({
                   Ao alterar o e-mail, o Supabase enviará um link de validação para o novo endereço antes de ativá-lo.
                 </p>
               </form>
+
+              {/* Autenticação em 2 Fatores (MFA / TOTP) */}
+              <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-[#F4F4F5] font-semibold">
+                    <QrCode className="w-4 h-4 text-[#34D399]" />
+                    Autenticação em 2 Fatores (2FA / TOTP)
+                  </div>
+                  {mfaFactors.length > 0 ? (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/40">
+                      2FA Ativo
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1A1B20] text-[#71717A] border border-[#27282E]">
+                      Inativo
+                    </span>
+                  )}
+                </div>
+
+                {mfaFactors.length > 0 ? (
+                  <div className="flex items-center justify-between gap-3 flex-wrap text-[11px]">
+                    <p className="text-[#A1A1AA]">
+                      Sua conta solicita código de 6 dígitos do aplicativo autenticador ao iniciar sessão.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={mfaLoading}
+                      onClick={() => handleDisableMfa(mfaFactors[0].id)}
+                      className="px-3 py-1.5 bg-[#221216] hover:bg-[#2E161B] text-[#FB7185] border border-[#F43F5E]/40 rounded-lg font-medium transition shrink-0"
+                    >
+                      Desativar 2FA
+                    </button>
+                  </div>
+                ) : mfaEnrollData ? (
+                  <form onSubmit={handleConfirmMfaEnroll} className="space-y-3 pt-1">
+                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#0D0E10] border border-[#232429] rounded-lg p-3">
+                      <img
+                        src={mfaEnrollData.qrDataUrl}
+                        alt="QR Code 2FA"
+                        className="w-32 h-32 rounded-lg bg-white p-1.5 shrink-0"
+                      />
+                      <div className="space-y-2 text-[11px] min-w-0">
+                        <p className="text-[#E4E4E7] font-medium">
+                          1. Escaneie o QR Code no Google Authenticator, Authy ou 1Password.
+                        </p>
+                        <p className="text-[#71717A] break-all font-mono">
+                          Chave manual: <strong className="text-[#34D399]">{mfaEnrollData.secret}</strong>
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={mfaVerifyCode}
+                            onChange={(e) => setMfaVerifyCode(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Código 6 dígitos"
+                            className="w-36 bg-[#141518] border border-[#27282E] rounded-lg px-3 py-1.5 font-mono text-center text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                          />
+                          <button
+                            type="submit"
+                            disabled={mfaLoading || mfaVerifyCode.length < 6}
+                            className="px-3 py-1.5 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold rounded-lg transition"
+                          >
+                            Confirmar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMfaEnrollData(null)}
+                            className="px-2.5 py-1.5 text-[#71717A] hover:text-[#F4F4F5]"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 flex-wrap text-[11px]">
+                    <p className="text-[#71717A]">
+                      Adicione uma segunda camada de proteção por código TOTP temporário.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={mfaLoading || !isOnline}
+                      onClick={handleStartMfaEnroll}
+                      className="px-3.5 py-1.5 bg-[#122620] hover:bg-[#17322A] disabled:opacity-50 text-[#34D399] border border-[#2EB88A]/40 rounded-lg font-medium transition shrink-0"
+                    >
+                      {mfaLoading ? 'Preparando...' : 'Ativar 2FA'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Trilha de Auditoria */}
+              <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[#F4F4F5] font-semibold">
+                    <History className="w-4 h-4 text-[#34D399]" />
+                    Registro de Atividades Críticas (Auditoria)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAuditLogs((v) => !v)}
+                    className="text-[11px] text-[#34D399] hover:underline font-medium"
+                  >
+                    {showAuditLogs ? 'Ocultar' : `Ver últimos (${auditLogs.length})`}
+                  </button>
+                </div>
+                {showAuditLogs && (
+                  <div className="max-h-44 overflow-y-auto divide-y divide-[#1F2024] bg-[#0D0E10] border border-[#232429] rounded-lg">
+                    {auditLogs.length === 0 ? (
+                      <p className="p-3 text-[11px] text-[#71717A] text-center">
+                        Nenhum evento registrado ainda.
+                      </p>
+                    ) : (
+                      auditLogs.map((log, i) => (
+                        <div key={log.id || i} className="px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+                          <div className="min-w-0 truncate">
+                            <span className="font-mono text-[#34D399]">{log.action}</span>
+                            {log.entity_id && (
+                              <span className="text-[#E4E4E7] ml-1.5 font-mono">({log.entity_id})</span>
+                            )}
+                          </div>
+                          <span className="font-mono text-[10px] text-[#71717A] shrink-0">
+                            {log.created_at ? new Date(log.created_at).toLocaleString('pt-BR') : '—'}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Encerrar Sessão */}
               {onSignOut && (
@@ -643,6 +957,75 @@ export default function UserProfileModal({
                   <span className="text-xl font-bold font-mono text-[#F4F4F5]">{stats.reports}</span>
                 </div>
               </div>
+
+              {/* Bloqueio Rápido por PIN (Dispositivos Compartilhados) */}
+              <form onSubmit={handleSaveScreenPin} className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-[#F4F4F5] font-semibold">
+                    <KeyRound className="w-4 h-4 text-[#34D399]" />
+                    Bloqueio Rápido de Tela por PIN (Campo / Tablet)
+                  </div>
+                  {hasScreenPin && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/40">
+                      PIN Ativo
+                    </span>
+                  )}
+                </div>
+
+                {deviceFeedback && (
+                  <p className={`text-[11px] ${deviceFeedback.type === 'error' ? 'text-[#FB7185]' : 'text-[#34D399]'}`}>
+                    {deviceFeedback.text}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[#A1A1AA] mb-1">PIN (4 a 6 dígitos)</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={screenPinInput}
+                      onChange={(e) => setScreenPinInput(e.target.value.replace(/\D/g, ''))}
+                      placeholder={hasScreenPin ? 'Novo PIN (ou vazio p/ manter)' : 'Ex: 1234'}
+                      className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 font-mono text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#A1A1AA] mb-1">Bloqueio Automático por Inatividade</label>
+                    <select
+                      value={screenLockMinutes}
+                      onChange={(e) => setScreenLockMinutes(e.target.value)}
+                      className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                    >
+                      <option value="0">Apenas bloqueio manual</option>
+                      <option value="5">Após 5 minutos sem uso</option>
+                      <option value="15">Após 15 minutos sem uso</option>
+                      <option value="30">Após 30 minutos sem uso</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  {hasScreenPin ? (
+                    <button
+                      type="button"
+                      onClick={handleRemoveScreenPin}
+                      className="text-[11px] text-[#FB7185] hover:underline"
+                    >
+                      Remover PIN deste aparelho
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-[#71717A]">Protege o acesso se o aparelho ficar apoiado em campo.</span>
+                  )}
+                  <button
+                    type="submit"
+                    className="px-3.5 py-1.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] border border-[#2D2F36] rounded-lg font-medium transition"
+                  >
+                    Salvar PIN
+                  </button>
+                </div>
+              </form>
             </div>
           )}
         </div>

@@ -9,7 +9,9 @@ import {
   Calendar,
   MapPin,
   User,
-  FileBarChart2
+  FileBarChart2,
+  Lock,
+  Clock
 } from 'lucide-react';
 import { ReportService } from '../../supabase/reportService';
 import {
@@ -25,25 +27,47 @@ import QrCodeSvg from '../common/QrCodeSvg';
 export default function PublicReportPortal({ token, onBackToHome, onOpenLegal }) {
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState(null);
+  const [pinRequired, setPinRequired] = useState(null); // { codigoRelatorio, unidade, invalidPin }
+  const [pinInput, setPinInput] = useState('');
+  const [pinSubmitting, setPinSubmitting] = useState(false);
+  const [expiredInfo, setExpiredInfo] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState(-1);
+
+  const loadPublic = async (pinValue = '') => {
+    setErrorMsg('');
+    setExpiredInfo(null);
+    const res = await ReportService.fetchPublicReport(token, pinValue);
+    if (!res) {
+      setErrorMsg('Este link de laudo é inválido, foi revogado pelo auditor ou ainda não foi sincronizado com a nuvem.');
+      setPinRequired(null);
+      setReport(null);
+      return;
+    }
+    if (res.expired) {
+      setExpiredInfo(res);
+      setPinRequired(null);
+      setReport(null);
+      return;
+    }
+    if (res.requiresPin) {
+      setPinRequired({
+        codigoRelatorio: res.codigoRelatorio || '',
+        unidade: res.unidade || '',
+        invalidPin: Boolean(res.invalidPin)
+      });
+      setReport(null);
+      return;
+    }
+    setPinRequired(null);
+    setReport(res);
+    document.title = `${res.codigoRelatorio} — Laudo Técnico Kivo`;
+  };
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setErrorMsg('');
-
-    ReportService.fetchPublicReport(token)
-      .then((res) => {
-        if (!active) return;
-        if (!res) {
-          setErrorMsg('Este link de laudo é inválido, foi revogado pelo auditor ou ainda não foi sincronizado com a nuvem.');
-          setReport(null);
-        } else {
-          setReport(res);
-          document.title = `${res.codigoRelatorio} — Laudo Técnico Kivo`;
-        }
-      })
+    loadPublic('')
       .catch(() => {
         if (!active) return;
         setErrorMsg('Não foi possível carregar o relatório público neste momento. Verifique sua conexão e tente novamente.');
@@ -57,6 +81,19 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
     };
   }, [token]);
 
+  const handleSubmitPin = async (e) => {
+    e.preventDefault();
+    if (!pinInput.trim()) return;
+    setPinSubmitting(true);
+    try {
+      await loadPublic(pinInput.trim());
+    } catch {
+      setErrorMsg('Falha ao validar código de acesso.');
+    } finally {
+      setPinSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] flex flex-col items-center justify-center p-6">
@@ -65,6 +102,80 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
         </div>
         <p className="text-sm font-medium text-[#E4E4E7]">Carregando laudo técnico validado...</p>
         <p className="text-xs text-[#71717A] mt-1 font-mono">{token}</p>
+      </div>
+    );
+  }
+
+  if (expiredInfo) {
+    return (
+      <div className="min-h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-[#111214] border border-[#232429] rounded-2xl p-7 text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-[#221A10] border border-[#F59E0B]/40 text-[#FBBF24] flex items-center justify-center mx-auto">
+            <Clock className="w-6 h-6" />
+          </div>
+          <h1 className="text-lg font-bold text-[#F4F4F5]">Link de laudo expirado</h1>
+          <p className="text-xs text-[#A1A1AA] leading-relaxed">
+            O prazo de validade configurado para este link compartilhado ({expiredInfo.codigoRelatorio || 'Laudo'}) encerrou. Solicite um novo link ao responsável técnico.
+          </p>
+          <button
+            type="button"
+            onClick={onBackToHome}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-semibold text-xs transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Ir para a página inicial do Kivo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (pinRequired) {
+    return (
+      <div className="min-h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] flex flex-col items-center justify-center p-4">
+        <form
+          onSubmit={handleSubmitPin}
+          className="w-full max-w-sm bg-[#111214] border border-[#232429] rounded-2xl p-6 sm:p-7 space-y-4 shadow-2xl"
+        >
+          <div className="w-11 h-11 rounded-2xl bg-[#122620] border border-[#2EB88A]/40 text-[#34D399] flex items-center justify-center mx-auto">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div className="text-center space-y-1">
+            <h1 className="text-base font-bold text-[#F4F4F5]">Laudo Protegido por Código PIN</h1>
+            <p className="text-xs text-[#A1A1AA]">
+              {pinRequired.unidade || pinRequired.codigoRelatorio || 'Documento Técnico'}
+            </p>
+          </div>
+          <div>
+            <input
+              type="password"
+              autoFocus
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              placeholder="Digite o PIN informado pelo auditor"
+              className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-sm tracking-widest text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+            />
+            {pinRequired.invalidPin && (
+              <p className="text-[11px] text-[#FB7185] mt-1.5 text-center">
+                Código PIN incorreto. Tente novamente.
+              </p>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={pinSubmitting || !pinInput.trim()}
+            className="w-full py-2.5 rounded-xl bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold text-xs transition"
+          >
+            {pinSubmitting ? 'Validando...' : 'Desbloquear Laudo'}
+          </button>
+          <button
+            type="button"
+            onClick={onBackToHome}
+            className="w-full py-1.5 text-[11px] text-[#71717A] hover:text-[#F4F4F5] transition"
+          >
+            Voltar ao Kivo
+          </button>
+        </form>
       </div>
     );
   }
