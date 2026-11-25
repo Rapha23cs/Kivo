@@ -756,12 +756,17 @@ export default function App() {
     sstItems.forEach((item) => {
       if (!item.dataValidade) return;
       const st = getExpiryStatus(item.dataValidade);
-      if (st.status === 'vencido' || st.status === 'vence_hoje' || st.status === 'atencao') {
+      if (
+        st.status === 'vencido' ||
+        st.status === 'vence_hoje' ||
+        st.status === 'alerta_30' ||
+        st.status === 'alerta_60'
+      ) {
         list.push({
           id: `sst-${item.id}`,
           category: 'sst',
           severity: st.status === 'vencido' || st.status === 'vence_hoje' ? 'danger' : 'warning',
-          title: `SST: ${item.titulo || item.categoria}`,
+          title: `SST: ${item.itemNome || item.titulo || item.categoria}`,
           subtitle: `${item.unidadeNome || item.clienteNome || 'Unidade'} • ${item.categoria}`,
           badge: st.label,
           targetTab: 'units'

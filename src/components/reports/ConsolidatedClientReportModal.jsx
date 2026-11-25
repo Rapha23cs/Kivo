@@ -33,8 +33,6 @@ export default function ConsolidatedClientReportModal({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const activeClientName = selectedClient || availableClients[0] || 'Todos os Clientes';
   const clientRecord = clients.find(
     (c) => (c.nome || '').trim().toLowerCase() === activeClientName.trim().toLowerCase()
@@ -132,6 +130,8 @@ export default function ConsolidatedClientReportModal({
     const rank = { Crítico: 4, Grave: 3, Médio: 2, Leve: 1 };
     return list.sort((a, b) => (rank[b.classification] || 0) - (rank[a.classification] || 0)).slice(0, 12);
   }, [filteredOrders]);
+
+  if (!isOpen) return null;
 
   const content = (
     <div className="kivo-print-modal-root fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">

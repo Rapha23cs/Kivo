@@ -168,7 +168,13 @@ export default function DashboardOverview({
     const sstAlerts = (sstItems || [])
       .filter((x) => x.dataValidade)
       .map((x) => ({ ...x, due: getExpiryStatus(x.dataValidade), kind: 'sst' }))
-      .filter((x) => x.due.status === 'vencido' || x.due.status === 'vence_hoje' || x.due.status === 'atencao')
+      .filter(
+        (x) =>
+          x.due.status === 'vencido' ||
+          x.due.status === 'vence_hoje' ||
+          x.due.status === 'alerta_30' ||
+          x.due.status === 'alerta_60'
+      )
       .sort((a, b) => (a.due.daysRemaining ?? 999) - (b.due.daysRemaining ?? 999));
 
     return { agendaAlerts: agendaAlerts.slice(0, 3), sstAlerts: sstAlerts.slice(0, 3) };
@@ -806,7 +812,7 @@ export default function DashboardOverview({
                     className="bg-[#0E0F12] border border-[#232429] hover:border-[#32343C] rounded-lg px-3 py-2 flex items-center justify-between gap-3 cursor-pointer transition"
                   >
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-[#F4F4F5] truncate">{item.titulo || item.categoria}</p>
+                      <p className="text-xs font-medium text-[#F4F4F5] truncate">{item.itemNome || item.titulo || item.categoria}</p>
                       <p className="text-[11px] text-[#71717A] truncate">
                         {item.unidadeNome || item.clienteNome || 'Unidade'} • {item.categoria}
                       </p>

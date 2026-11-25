@@ -17,8 +17,6 @@ export default function NewWorkOrderModal({
   initialUnit = null,
   userProfile
 }) {
-  if (!isOpen) return null;
-
   const { toast } = useFeedback();
   const [discipline, setDiscipline] = useState('meio_ambiente');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -53,6 +51,8 @@ export default function NewWorkOrderModal({
       setMunicipio(initialUnit.municipio || '');
     }
   }, [initialUnit]);
+
+  if (!isOpen) return null;
 
   const handleSelectExistingUnit = (unitId) => {
     setSelectedUnitId(unitId);

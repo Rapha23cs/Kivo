@@ -160,8 +160,6 @@ export default function ReportEditorModal({
     };
   }, []);
 
-  if (!isOpen || !draft) return null;
-
   const scheduleAutoSave = (nextDraft, { immediate = false } = {}) => {
     latestDraftRef.current = nextDraft;
     isDirtyRef.current = true;
@@ -551,12 +549,15 @@ export default function ReportEditorModal({
     onClose();
   };
 
-  const effectiveDiscipline = draft.discipline || linkedOrder?.discipline || 'meio_ambiente';
+  const effectiveDiscipline = draft?.discipline || linkedOrder?.discipline || 'meio_ambiente';
   const reportMeta = getReportMetaByDiscipline(effectiveDiscipline);
   const disciplineMeta = getDisciplineMeta(effectiveDiscipline);
 
-  const photos = draft.registrosFotograficos || [];
-  const photoSections = React.useMemo(() => getPhotoSectionsForReport(draft), [draft]);
+  const photos = draft?.registrosFotograficos || [];
+  const photoSections = React.useMemo(
+    () => (draft ? getPhotoSectionsForReport(draft) : PHOTO_SECTIONS),
+    [draft]
+  );
   const activePhotoSection = photoSections.includes(selectedPhotoSection)
     ? selectedPhotoSection
     : photoSections[0] || PHOTO_SECTIONS[0];
@@ -569,27 +570,27 @@ export default function ReportEditorModal({
   });
 
   const topicBreakdown = React.useMemo(() => {
-    if (Array.isArray(draft.desempenhoTematico) && draft.desempenhoTematico.length > 0) {
+    if (Array.isArray(draft?.desempenhoTematico) && draft.desempenhoTematico.length > 0) {
       return draft.desempenhoTematico;
     }
     if (linkedOrder?.checklist?.length) {
       return Object.values(calculateTopicBreakdown(linkedOrder.checklist));
     }
     return [];
-  }, [draft.desempenhoTematico, linkedOrder]);
+  }, [draft?.desempenhoTematico, linkedOrder]);
 
   const linkedSummary = React.useMemo(() => {
     return linkedOrder?.checklist?.length ? calculateInspectionSummary(linkedOrder.checklist) : null;
   }, [linkedOrder]);
 
-  const aderenciaAtual = draft.nivelAderencia || calculateAdherenceLevel(draft.indiceConformidade);
+  const aderenciaAtual = draft?.nivelAderencia || calculateAdherenceLevel(draft?.indiceConformidade);
 
   // Slots ligados a itens marcados como 'Não' no checklist vinculado (H1)
   const deviationSlotOrders = React.useMemo(() => {
     const set = new Set();
     photos.forEach((p) => {
       if (p.checklistItemNumber) {
-        const matchedDev = (draft.desvios || []).some(
+        const matchedDev = (draft?.desvios || []).some(
           (d) => Number(d.checklistItemNumber) === Number(p.checklistItemNumber)
         );
         if (matchedDev) set.add(p.ordem);
@@ -602,7 +603,7 @@ export default function ReportEditorModal({
       }
     });
     return set;
-  }, [linkedOrder, photos, draft.desvios]);
+  }, [linkedOrder, photos, draft?.desvios]);
 
   const jumpToPhotoSlot = (slotOrdem) => {
     const found = photos.find((p) => Number(p.ordem) === Number(slotOrdem));
@@ -617,7 +618,7 @@ export default function ReportEditorModal({
 
   const lightboxImages = React.useMemo(() => {
     const imgs = [];
-    if (draft.fachadaUrl) {
+    if (draft?.fachadaUrl) {
       imgs.push({
         key: 'facade',
         url: draft.fachadaUrl,
@@ -637,12 +638,14 @@ export default function ReportEditorModal({
         });
       });
     return imgs;
-  }, [draft.fachadaUrl, draft.unidade, photos]);
+  }, [draft?.fachadaUrl, draft?.unidade, photos]);
 
   const openLightboxByKey = (key) => {
     const idx = lightboxImages.findIndex((i) => i.key === key);
     if (idx >= 0) setLightboxIndex(idx);
   };
+
+  if (!isOpen || !draft) return null;
 
   const modalContent = (
     <>

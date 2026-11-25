@@ -67,7 +67,7 @@ export default function ImageLightboxModal({
             href={current.url}
             download={`kivo-evidencia-${clampedIndex + 1}.jpg`}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="p-2 rounded-lg bg-[#141518] hover:bg-[#1C1D22] border border-[#232429] text-[#E4E4E7] transition"
             title="Abrir / Baixar original"
           >

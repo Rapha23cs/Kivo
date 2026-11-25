@@ -114,11 +114,10 @@ export default function WorkOrderDetailModal({
   onOpenTechnicalReport,
   userProfile = null
 }) {
-  if (!isOpen || !order) return null;
-
   const { confirm, toast } = useFeedback();
-  const resumeStorageKey = `kivo_resume_order_${order.id}`;
+  const resumeStorageKey = order?.id ? `kivo_resume_order_${order.id}` : null;
   const initialResume = useMemo(() => {
+    if (!resumeStorageKey) return {};
     try {
       const raw = localStorage.getItem(resumeStorageKey);
       return raw ? JSON.parse(raw) : {};
@@ -139,6 +138,7 @@ export default function WorkOrderDetailModal({
 
   useEffect(() => {
     setCurrentOrder((prev) => {
+      if (!order) return null;
       if (!prev || prev.id !== order.id) return order;
       if (order.supabaseId && prev.supabaseId !== order.supabaseId) {
         return { ...prev, supabaseId: order.supabaseId };
@@ -153,6 +153,7 @@ export default function WorkOrderDetailModal({
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    if (!resumeStorageKey) return;
     try {
       localStorage.setItem(
         resumeStorageKey,
@@ -177,13 +178,13 @@ export default function WorkOrderDetailModal({
 
   // Calcular Resumo da Inspeção em tempo real
   const summary = useMemo(() => {
-    return calculateInspectionSummary(currentOrder.checklist || []);
-  }, [currentOrder.checklist]);
+    return calculateInspectionSummary(currentOrder?.checklist || []);
+  }, [currentOrder?.checklist]);
 
   // Breakdown por temática (total, conformes, desvios por tópico)
   const topicBreakdown = useMemo(() => {
-    return calculateTopicBreakdown(currentOrder.checklist || []);
-  }, [currentOrder.checklist]);
+    return calculateTopicBreakdown(currentOrder?.checklist || []);
+  }, [currentOrder?.checklist]);
 
   const commitOrderUpdate = (updated) => {
     setCurrentOrder(updated);
@@ -427,7 +428,7 @@ export default function WorkOrderDetailModal({
 
   // Filtragem avançada: Temática + Status de Resposta + Busca de Texto
   const displayedItems = useMemo(() => {
-    return (currentOrder.checklist || []).filter(item => {
+    return (currentOrder?.checklist || []).filter(item => {
       // 1. Filtro por Temática
       const itemTopic = item.topic || item.topicTitle;
       const matchesTopic = selectedTopic === 'ALL' || itemTopic === selectedTopic;
@@ -453,10 +454,10 @@ export default function WorkOrderDetailModal({
 
       return true;
     });
-  }, [currentOrder.checklist, selectedTopic, statusFilter, searchTerm]);
+  }, [currentOrder?.checklist, selectedTopic, statusFilter, searchTerm]);
 
   // Contadores para os filtros de status
-  const checklistItems = currentOrder.checklist || [];
+  const checklistItems = currentOrder?.checklist || [];
   const countSim = checklistItems.filter(i => i.status === 'sim' || i.status === 'conforme').length;
   const countNao = checklistItems.filter(i => i.status === 'nao' || i.status === 'nao_conforme').length;
   const countNA = checklistItems.filter(i => i.status === 'na' || i.status === 'nao_aplicavel').length;
@@ -478,6 +479,8 @@ export default function WorkOrderDetailModal({
     const idx = lightboxImages.findIndex((img) => img.itemId === itemId);
     if (idx >= 0) setLightboxIndex(idx);
   };
+
+  if (!isOpen || !order || !currentOrder) return null;
 
   const orderStatusMeta = getOrderStatusMeta(currentOrder.status);
 

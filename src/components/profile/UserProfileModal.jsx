@@ -41,8 +41,6 @@ export default function UserProfileModal({
   onScreenLockConfigChange,
   stats = { orders: 0, reports: 0, units: 0, clients: 0 }
 }) {
-  if (!isOpen) return null;
-
   const { confirm } = useFeedback();
   const [activeTab, setActiveTab] = useState('profile'); // profile | security | device
   const [profile, setProfile] = useState({ ...userProfile });
@@ -108,6 +106,8 @@ export default function UserProfileModal({
       AuditService.listRecent(15).then(setAuditLogs);
     }
   }, [isOpen, activeTab]);
+
+  if (!isOpen) return null;
 
   const handleSubmitProfile = async (e) => {
     e.preventDefault();
