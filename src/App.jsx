@@ -355,6 +355,15 @@ export default function App() {
         await handleSyncNow();
       }
 
+      if (session?.user) {
+        try {
+          const freshProfile = await DataService.syncSessionUser(session.user);
+          if (freshProfile) setUserProfile(freshProfile);
+        } catch (err) {
+          console.warn('Falha ao atualizar perfil/papel no Supabase:', err.message);
+        }
+      }
+
       try {
         const remote = await DataService.loadFromSupabase();
         if (remote?.orders) setOrders(remote.orders);
@@ -521,7 +530,8 @@ export default function App() {
     client.auth.getSession().then(async ({ data }) => {
       const activeSession = data?.session || null;
       if (activeSession?.user) {
-        DataService.syncSessionUser(activeSession.user);
+        const synced = await DataService.syncSessionUser(activeSession.user);
+        if (synced) setUserProfile(synced);
       }
       const needsMfa = await checkMfaStatus(activeSession);
       setMfaRequired(needsMfa);
@@ -534,7 +544,8 @@ export default function App() {
         setRecoveryMode(true);
       }
       if (nextSession?.user) {
-        DataService.syncSessionUser(nextSession.user);
+        const synced = await DataService.syncSessionUser(nextSession.user);
+        if (synced) setUserProfile(synced);
       }
       const needsMfa = await checkMfaStatus(nextSession);
       setMfaRequired(needsMfa);

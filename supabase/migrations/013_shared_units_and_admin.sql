@@ -191,23 +191,27 @@ begin
         and id <> v_keep_id
     );
 
-    update public.vistorias_agenda
-    set unidade_id = v_keep_id
-    where unidade_id in (
-      select id from public.unidades
-      where lower(trim(coalesce(cliente_nome, ''))) = rec.norm_cli
-        and lower(trim(nome)) = rec.norm_nome
-        and id <> v_keep_id
-    );
+    if to_regclass('public.vistorias_agenda') is not null then
+      update public.vistorias_agenda
+      set unidade_id = v_keep_id
+      where unidade_id in (
+        select id from public.unidades
+        where lower(trim(coalesce(cliente_nome, ''))) = rec.norm_cli
+          and lower(trim(nome)) = rec.norm_nome
+          and id <> v_keep_id
+      );
+    end if;
 
-    update public.sst_vencimentos
-    set unidade_id = v_keep_id
-    where unidade_id in (
-      select id from public.unidades
-      where lower(trim(coalesce(cliente_nome, ''))) = rec.norm_cli
-        and lower(trim(nome)) = rec.norm_nome
-        and id <> v_keep_id
-    );
+    if to_regclass('public.sst_vencimentos') is not null then
+      update public.sst_vencimentos
+      set unidade_id = v_keep_id
+      where unidade_id in (
+        select id from public.unidades
+        where lower(trim(coalesce(cliente_nome, ''))) = rec.norm_cli
+          and lower(trim(nome)) = rec.norm_nome
+          and id <> v_keep_id
+      );
+    end if;
 
     delete from public.unidades
     where lower(trim(coalesce(cliente_nome, ''))) = rec.norm_cli

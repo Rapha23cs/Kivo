@@ -353,25 +353,40 @@ export const DataService = {
     }
     localStorage.setItem(LS_ACTIVE_UID_KEY, user.id);
 
-    const pending = OfflineStore.getPendingIndex();
-    if (pending.updateProfile) {
-      return this.getUserProfile();
-    }
-
-    const meta = user.user_metadata || {};
     let resolvedRole = 'auditor';
     try {
-      const { data: roleRow } = await client
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (roleRow?.role === 'admin') {
-        resolvedRole = 'admin';
+      const { client } = getSupabaseClient();
+      if (client && navigator.onLine !== false) {
+        const { data: roleRow } = await client
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (roleRow?.role === 'admin') {
+          resolvedRole = 'admin';
+        }
+      } else {
+        const cached = safeLocalStorageGet(LS_PROFILE_KEY, null);
+        if (cached?.userId === user.id && cached?.role === 'admin') {
+          resolvedRole = 'admin';
+        }
       }
     } catch {
       // fallback caso migration 013 ainda não tenha sido aplicada
     }
+
+    const pending = OfflineStore.getPendingIndex();
+    if (pending.updateProfile) {
+      const cachedProfile = {
+        ...this.getUserProfile(),
+        userId: user.id,
+        role: resolvedRole
+      };
+      persistProfileCache(cachedProfile);
+      return cachedProfile;
+    }
+
+    const meta = user.user_metadata || {};
 
     const syncedProfile = {
       userId: user.id,
