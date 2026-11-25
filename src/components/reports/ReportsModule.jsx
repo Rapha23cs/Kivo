@@ -36,6 +36,7 @@ export default function ReportsModule({
   clients = [],
   hospitals,
   userProfile,
+  isAdmin = false,
   onSaveReport,
   onLocalDraftUpdate,
   onDeleteReport,
@@ -135,10 +136,12 @@ export default function ReportsModule({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-[#F4F4F5] tracking-tight">
-            Relatórios Técnicos de Vistoria
+            {isAdmin ? 'Supervisão de Relatórios Técnicos' : 'Relatórios Técnicos de Vistoria'}
           </h2>
           <p className="text-xs text-[#71717A] mt-0.5">
-            Todo relatório nasce vinculado a uma Vistoria (Meio Ambiente ou Segurança do Trabalho) com checklist preenchido
+            {isAdmin
+              ? 'Visualização administrativa e impressão executiva dos laudos emitidos pelos auditores'
+              : 'Todo relatório nasce vinculado a uma Vistoria (Meio Ambiente ou Segurança do Trabalho) com checklist preenchido'}
           </p>
         </div>
 
@@ -162,14 +165,16 @@ export default function ReportsModule({
               Ir para Vistorias
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleOpenCreateFlow}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
-          >
-            <Plus className="w-4 h-4" />
-            Vincular Vistoria / Novo Relatório
-          </button>
+          {!isAdmin && (
+            <button
+              type="button"
+              onClick={handleOpenCreateFlow}
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
+            >
+              <Plus className="w-4 h-4" />
+              Vincular Vistoria / Novo Relatório
+            </button>
+          )}
         </div>
       </div>
 
@@ -278,31 +283,37 @@ export default function ReportsModule({
       {filteredReports.length === 0 ? (
         <div className="bg-[#141518] border border-[#232429] rounded-xl p-12 text-center space-y-3">
           <FileBarChart2 className="w-10 h-10 text-[#71717A] mx-auto" />
-          <h3 className="text-sm font-semibold text-[#F4F4F5]">Nenhum relatório vinculado ainda</h3>
+          <h3 className="text-sm font-semibold text-[#F4F4F5]">
+            {isAdmin ? 'Nenhum relatório emitido pelos auditores ainda' : 'Nenhum relatório vinculado ainda'}
+          </h3>
           <p className="text-xs text-[#71717A] max-w-md mx-auto">
-            Primeiro inicie uma vistoria e responda ao checklist de campo. Depois vincule essa vistoria para gerar e finalizar o relatório técnico completo.
+            {isAdmin
+              ? 'Os relatórios técnicos gerados pelos auditores em campo aparecerão aqui para supervisão e exportação.'
+              : 'Primeiro inicie uma vistoria e responda ao checklist de campo. Depois vincule essa vistoria para gerar e finalizar o relatório técnico completo.'}
           </p>
-          <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
-            {orders?.length > 0 ? (
-              <button
-                type="button"
-                onClick={handleOpenCreateFlow}
-                className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
-              >
-                <ClipboardCheck className="w-4 h-4" />
-                Selecionar Vistoria com Checklist
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onNavigateTab?.('orders')}
-                className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
-              >
-                <span>Ir para Vistorias &amp; Checklists</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          {!isAdmin && (
+            <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+              {orders?.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleOpenCreateFlow}
+                  className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  Selecionar Vistoria com Checklist
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab?.('orders')}
+                  className="px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
+                >
+                  <span>Ir para Vistorias &amp; Checklists</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -389,7 +400,10 @@ export default function ReportsModule({
                           <Building2 className="w-3.5 h-3.5 shrink-0" />
                         );
                       })()}
-                      <span className="truncate">{rep.clienteNome || 'Cliente'} • {rep.cidade || 'Cidade não informada'}</span>
+                      <span className="truncate">
+                        {rep.clienteNome || 'Cliente'} • {rep.cidade || 'Cidade não informada'}
+                        {isAdmin && rep.responsavel ? ` • Auditor: ${rep.responsavel}` : ''}
+                      </span>
                     </p>
                   </div>
 

@@ -40,6 +40,8 @@ export default function UserProfileModal({
   pendingSyncCount = 0,
   onSyncNow,
   onScreenLockConfigChange,
+  onRolesChanged,
+  initialTab = null,
   stats = { orders: 0, reports: 0, units: 0, clients: 0 }
 }) {
   const { confirm } = useFeedback();
@@ -90,6 +92,12 @@ export default function UserProfileModal({
     setProfile({ ...userProfile });
     setNewEmail(userProfile?.email || '');
   }, [userProfile, isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab || (isAdmin ? 'admin' : 'profile'));
+    }
+  }, [isOpen, initialTab, isAdmin]);
 
   const loadMfaFactors = async () => {
     if (!isOnline) return;
@@ -390,7 +398,7 @@ export default function UserProfileModal({
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-[#F4F4F5] text-sm sm:text-base truncate flex items-center gap-2">
-                <span>Minha Conta &amp; Perfil RT</span>
+                <span>{isAdmin ? 'Administração & Conta' : 'Minha Conta & Perfil RT'}</span>
                 {isAdmin && (
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/40">
                     Admin
@@ -413,6 +421,20 @@ export default function UserProfileModal({
 
         {/* Abas */}
         <div className="px-4 sm:px-6 border-b border-[#232429] bg-[#111214] flex gap-4 text-xs font-medium overflow-x-auto shrink-0">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('admin')}
+              className={`py-2.5 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+                activeTab === 'admin'
+                  ? 'border-[#F59E0B] text-[#FBBF24] font-semibold'
+                  : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Administração
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setActiveTab('profile')}
@@ -423,7 +445,7 @@ export default function UserProfileModal({
             }`}
           >
             <User className="w-3.5 h-3.5" />
-            Perfil RT
+            {isAdmin ? 'Minha Conta' : 'Perfil RT'}
           </button>
           <button
             type="button"
@@ -454,20 +476,6 @@ export default function UserProfileModal({
               </span>
             )}
           </button>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('admin')}
-              className={`py-2.5 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
-                activeTab === 'admin'
-                  ? 'border-[#F59E0B] text-[#FBBF24] font-semibold'
-                  : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              Administração
-            </button>
-          )}
         </div>
 
         {/* Conteúdo */}
@@ -486,13 +494,13 @@ export default function UserProfileModal({
                 </div>
               )}
 
-              {/* Identidade Visual do RT (Foto + Assinatura para Laudos PDF) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#141518] border border-[#232429] rounded-xl p-4">
+              {/* Identidade Visual (Foto + Assinatura RT apenas para auditores) */}
+              <div className={`grid grid-cols-1 ${isAdmin ? '' : 'sm:grid-cols-2'} gap-4 bg-[#141518] border border-[#232429] rounded-xl p-4`}>
                 <div className="flex items-center gap-3">
                   {profile.avatarUrl ? (
                     <img
                       src={sanitizeMediaUrl(profile.avatarUrl)}
-                      alt={profile.name || 'Foto do Auditor'}
+                      alt={profile.name || 'Foto do Perfil'}
                       className="w-12 h-12 rounded-full object-cover border border-[#2EB88A]/50 shrink-0"
                     />
                   ) : (
@@ -501,7 +509,9 @@ export default function UserProfileModal({
                     </div>
                   )}
                   <div className="space-y-1 min-w-0">
-                    <span className="text-[11px] font-semibold text-[#F4F4F5] block">Foto do Perfil RT</span>
+                    <span className="text-[11px] font-semibold text-[#F4F4F5] block">
+                      {isAdmin ? 'Foto do Administrador' : 'Foto do Perfil RT'}
+                    </span>
                     <div className="flex items-center gap-2 flex-wrap">
                       <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-md text-[11px] text-[#E4E4E7] cursor-pointer transition">
                         <Upload className="w-3 h-3 text-[#34D399]" />
@@ -527,52 +537,54 @@ export default function UserProfileModal({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-[#F4F4F5] flex items-center gap-1">
-                      <PenTool className="w-3 h-3 text-[#34D399]" />
-                      Assinatura Digital (Laudos PDF)
-                    </span>
-                    {profile.signatureUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setProfile((prev) => ({ ...prev, signatureUrl: '' }))}
-                        className="text-[10px] text-[#FB7185] hover:underline"
-                      >
-                        Remover
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    {profile.signatureUrl ? (
-                      <div className="bg-white rounded-md px-2 py-1 border border-[#27282E] h-10 flex items-center justify-center">
-                        <img
-                          src={sanitizeMediaUrl(profile.signatureUrl)}
-                          alt="Assinatura RT"
-                          className="max-h-8 max-w-[120px] object-contain"
+                {!isAdmin && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-[#F4F4F5] flex items-center gap-1">
+                        <PenTool className="w-3 h-3 text-[#34D399]" />
+                        Assinatura Digital (Laudos PDF)
+                      </span>
+                      {profile.signatureUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setProfile((prev) => ({ ...prev, signatureUrl: '' }))}
+                          className="text-[10px] text-[#FB7185] hover:underline"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      {profile.signatureUrl ? (
+                        <div className="bg-white rounded-md px-2 py-1 border border-[#27282E] h-10 flex items-center justify-center">
+                          <img
+                            src={sanitizeMediaUrl(profile.signatureUrl)}
+                            alt="Assinatura RT"
+                            className="max-h-8 max-w-[120px] object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-[#71717A] italic">Nenhuma assinatura enviada</span>
+                      )}
+                      <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-md text-[11px] text-[#E4E4E7] cursor-pointer transition shrink-0">
+                        <Upload className="w-3 h-3 text-[#34D399]" />
+                        <span>{profile.signatureUrl ? 'Substituir' : 'Enviar imagem'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleProfileImageUpload('signatureUrl', 480, e)}
                         />
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-[#71717A] italic">Nenhuma assinatura enviada</span>
-                    )}
-                    <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1C1D22] hover:bg-[#25272E] border border-[#2D2F36] rounded-md text-[11px] text-[#E4E4E7] cursor-pointer transition shrink-0">
-                      <Upload className="w-3 h-3 text-[#34D399]" />
-                      <span>{profile.signatureUrl ? 'Substituir' : 'Enviar imagem'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleProfileImageUpload('signatureUrl', 480, e)}
-                      />
-                    </label>
+                      </label>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[#A1A1AA] font-medium mb-1">
-                    Nome Completo do Auditor / RT *
+                    {isAdmin ? 'Nome do Administrador *' : 'Nome Completo do Auditor / RT *'}
                   </label>
                   <input
                     type="text"
@@ -583,55 +595,62 @@ export default function UserProfileModal({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[#A1A1AA] font-medium mb-1">
-                    Registro no Conselho de Classe (RT) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: CRQ-IV 04291880 ou CREA-MA 506921"
-                    value={profile.registry || ''}
-                    onChange={(e) => setProfile({ ...profile, registry: e.target.value })}
-                    className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#34D399] font-mono focus:border-[#2EB88A] focus:outline-none"
-                  />
-                </div>
+                {!isAdmin && (
+                  <div>
+                    <label className="block text-[#A1A1AA] font-medium mb-1">
+                      Registro no Conselho de Classe (RT) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: CRQ-IV 04291880 ou CREA-MA 506921"
+                      value={profile.registry || ''}
+                      onChange={(e) => setProfile({ ...profile, registry: e.target.value })}
+                      className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#34D399] font-mono focus:border-[#2EB88A] focus:outline-none"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[#A1A1AA] font-medium mb-1">
-                    Título / Cargo Profissional
+                    {isAdmin ? 'Função / Cargo no Sistema' : 'Título / Cargo Profissional'}
                   </label>
                   <input
                     type="text"
                     value={profile.title || ''}
                     onChange={(e) => setProfile({ ...profile, title: e.target.value })}
+                    placeholder={isAdmin ? 'Administrador do Sistema' : ''}
                     className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[#A1A1AA] font-medium mb-1">
-                    Área de Especialidade
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.specialty || ''}
-                    onChange={(e) => setProfile({ ...profile, specialty: e.target.value })}
-                    className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
-                  />
-                </div>
+                {!isAdmin && (
+                  <>
+                    <div>
+                      <label className="block text-[#A1A1AA] font-medium mb-1">
+                        Área de Especialidade
+                      </label>
+                      <input
+                        type="text"
+                        value={profile.specialty || ''}
+                        onChange={(e) => setProfile({ ...profile, specialty: e.target.value })}
+                        className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-[#A1A1AA] font-medium mb-1">
-                    Nome da Consultoria / PJ (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.consultancyName || ''}
-                    onChange={(e) => setProfile({ ...profile, consultancyName: e.target.value })}
-                    className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-[#A1A1AA] font-medium mb-1">
+                        Nome da Consultoria / PJ (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={profile.consultancyName || ''}
+                        onChange={(e) => setProfile({ ...profile, consultancyName: e.target.value })}
+                        className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-[#A1A1AA] font-medium mb-1">
@@ -1176,6 +1195,7 @@ export default function UserProfileModal({
                               try {
                                 await DataService.updateUserRole(u.user_id, nextRole);
                                 await loadAdminUsers();
+                                onRolesChanged?.();
                                 setAdminFeedback({
                                   type: 'success',
                                   text: `Papel de ${u.email} atualizado para ${nextRole}.`

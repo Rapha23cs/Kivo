@@ -22,6 +22,7 @@ import { WORK_DISCIPLINES, getDisciplineMeta } from '../../data/workflowsConfig'
 export default function WorkOrderList({
   orders,
   clients = [],
+  isAdmin = false,
   onOpenOrder,
   onNewOrder,
   onDeleteOrder,
@@ -34,6 +35,7 @@ export default function WorkOrderList({
   const [statusFilter, setStatusFilter] = useState('all');
   const [disciplineFilter, setDisciplineFilter] = useState('all');
   const [inspectionTypeFilter, setInspectionTypeFilter] = useState('all');
+  const [auditorFilter, setAuditorFilter] = useState('all');
   const [viewMode, setViewMode] = useState('list');
   const [draggingOrderId, setDraggingOrderId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -63,6 +65,10 @@ export default function WorkOrderList({
     });
   };
 
+  const auditorOptions = Array.from(
+    new Set((orders || []).map((o) => o.technicianName).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
   const filteredOrders = orders.filter((order) => {
     const q = searchTerm.toLowerCase();
     const matchesSearch =
@@ -71,15 +77,18 @@ export default function WorkOrderList({
       (order.clientName || '').toLowerCase().includes(q) ||
       (order.hospitalName || '').toLowerCase().includes(q) ||
       (order.regional || '').toLowerCase().includes(q) ||
-      (order.municipio || '').toLowerCase().includes(q);
+      (order.municipio || '').toLowerCase().includes(q) ||
+      (order.technicianName || '').toLowerCase().includes(q);
 
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const matchesDiscipline =
       disciplineFilter === 'all' || (order.discipline || 'meio_ambiente') === disciplineFilter;
     const matchesInspectionType =
       inspectionTypeFilter === 'all' || (order.inspectionType || 'Programada') === inspectionTypeFilter;
+    const matchesAuditor =
+      auditorFilter === 'all' || (order.technicianName || '') === auditorFilter;
 
-    return matchesSearch && matchesStatus && matchesDiscipline && matchesInspectionType;
+    return matchesSearch && matchesStatus && matchesDiscipline && matchesInspectionType && matchesAuditor;
   });
 
   return (
@@ -88,10 +97,12 @@ export default function WorkOrderList({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-[#F4F4F5] tracking-tight">
-            Vistorias & Checklists
+            {isAdmin ? 'Supervisão de Vistorias & Checklists' : 'Vistorias & Checklists'}
           </h2>
           <p className="text-xs text-[#71717A]">
-            Vistorias técnicas por fluxo de trabalho (Meio Ambiente e Segurança do Trabalho)
+            {isAdmin
+              ? 'Acompanhamento administrativo das auditorias realizadas em campo pelos usuários'
+              : 'Vistorias técnicas por fluxo de trabalho (Meio Ambiente e Segurança do Trabalho)'}
           </p>
         </div>
 
@@ -125,13 +136,15 @@ export default function WorkOrderList({
             </button>
           )}
 
-          <button
-            onClick={onNewOrder}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#080A09] rounded-lg text-xs font-bold transition"
-          >
-            <Plus className="w-4 h-4" />
-            Nova Vistoria
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={onNewOrder}
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#080A09] rounded-lg text-xs font-bold transition"
+            >
+              <Plus className="w-4 h-4" />
+              Nova Vistoria
+            </button>
+          )}
         </div>
       </div>
 
@@ -189,6 +202,23 @@ export default function WorkOrderList({
               <option value="Não Programada" className="bg-[#141518] text-[#F4F4F5]">Não Programadas</option>
             </select>
           </div>
+
+          {isAdmin && auditorOptions.length > 0 && (
+            <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
+              <select
+                value={auditorFilter}
+                onChange={(e) => setAuditorFilter(e.target.value)}
+                className="bg-transparent text-[#E4E4E7] focus:outline-none cursor-pointer"
+              >
+                <option value="all" className="bg-[#141518] text-[#F4F4F5]">Todos os Auditores</option>
+                {auditorOptions.map((name) => (
+                  <option key={name} value={name} className="bg-[#141518] text-[#F4F4F5]">
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -199,7 +229,13 @@ export default function WorkOrderList({
           <div className="md:hidden divide-y divide-[#1F2024]">
             {filteredOrders.length === 0 ? (
               <div className="py-10 px-4 text-center text-xs text-[#71717A]">
-                Nenhuma inspeção encontrada. Clique em <strong className="text-[#F4F4F5]">Nova Vistoria</strong> para criar uma.
+                {isAdmin ? (
+                  'Nenhuma inspeção encontrada para os filtros selecionados.'
+                ) : (
+                  <>
+                    Nenhuma inspeção encontrada. Clique em <strong className="text-[#F4F4F5]">Nova Vistoria</strong> para criar uma.
+                  </>
+                )}
               </div>
             ) : (
               filteredOrders.map((order) => {
@@ -245,7 +281,10 @@ export default function WorkOrderList({
 
                     <div>
                       <p className="text-sm font-semibold text-[#F4F4F5] leading-snug">{order.hospitalName}</p>
-                      <p className="text-[11px] text-[#71717A]">{order.clientName || 'Cliente não informado'}</p>
+                      <p className="text-[11px] text-[#71717A]">
+                        {order.clientName || 'Cliente não informado'}
+                        {isAdmin && order.technicianName ? ` • Auditor: ${order.technicianName}` : ''}
+                      </p>
                     </div>
 
                     <div className="flex items-center justify-between gap-2 text-[11px] text-[#A1A1AA] flex-wrap">
@@ -315,7 +354,13 @@ export default function WorkOrderList({
                 {filteredOrders.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-[#71717A]">
-                      Nenhuma inspeção encontrada. Clique em <strong className="text-[#F4F4F5]">Nova Vistoria</strong> para criar uma.
+                      {isAdmin ? (
+                        'Nenhuma inspeção encontrada para os filtros selecionados.'
+                      ) : (
+                        <>
+                          Nenhuma inspeção encontrada. Clique em <strong className="text-[#F4F4F5]">Nova Vistoria</strong> para criar uma.
+                        </>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -370,6 +415,9 @@ export default function WorkOrderList({
                               ) : null;
                             })()}
                             <span>{order.clientName || 'Cliente não informado'}</span>
+                            {isAdmin && order.technicianName && (
+                              <span className="text-[#A1A1AA]">• {order.technicianName}</span>
+                            )}
                           </p>
                         </td>
                         <td className="py-3.5 px-4 text-[#A1A1AA]">

@@ -34,76 +34,140 @@ export default function Sidebar({
   collapsed = false,
   onToggleCollapse
 }) {
-  const menuItems = [
-    {
-      id: 'dashboard',
-      label: 'Meu Painel',
-      shortLabel: 'Painel',
-      icon: LayoutDashboard,
-      mobileBar: true
-    },
-    {
-      id: 'orders',
-      label: 'Vistorias & Checklists',
-      shortLabel: 'Vistorias',
-      icon: ClipboardList,
-      badge: openOrdersCount > 0 ? openOrdersCount : null,
-      badgeColor: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
-      mobileBar: true
-    },
-    {
-      id: 'actions',
-      label: 'Planos de Ação',
-      shortLabel: 'Ações',
-      icon: AlertOctagon,
-      badge: openActionsCount > 0 ? openActionsCount : null,
-      badgeColor: 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/30',
-      mobileBar: true
-    },
-    {
-      id: 'agenda',
-      label: 'Agenda & Recorrência',
-      shortLabel: 'Agenda',
-      icon: Calendar,
-      badge: dueAgendaCount > 0 ? dueAgendaCount : null,
-      badgeColor: 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30',
-      mobileBar: true
-    },
-    {
-      id: 'reports',
-      label: 'Relatórios Técnicos',
-      shortLabel: 'Relatórios',
-      icon: FileBarChart2,
-      badge: reportsCount > 0 ? reportsCount : null,
-      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
-      mobileBar: true
-    },
-    {
-      id: 'units',
-      label: 'Clientes, Unidades & SST',
-      shortLabel: 'Unidades',
-      icon: Building2,
-      badge: unitsCount > 0 ? unitsCount : null,
-      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
-      mobileBar: false
-    },
-    {
-      id: 'templates',
-      label: 'Modelos de Checklist',
-      shortLabel: 'Modelos',
-      icon: SlidersHorizontal,
-      badge: templatesCount > 0 ? templatesCount : null,
-      badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
-      mobileBar: false
-    },
-    {
-      id: 'profile',
-      label: 'Minha Conta & RT',
-      shortLabel: 'Conta',
-      icon: Award,
-      mobileBar: false
-    }
-  ];
+  const isAdmin = userProfile?.role === 'admin';
+
+  const menuItems = isAdmin
+    ? [
+        {
+          id: 'dashboard',
+          label: 'Visão Geral (Admin)',
+          shortLabel: 'Painel',
+          icon: LayoutDashboard,
+          mobileBar: true
+        },
+        {
+          id: 'units',
+          label: 'Unidades & Rotas (MA)',
+          shortLabel: 'Unidades',
+          icon: Building2,
+          badge: unitsCount > 0 ? unitsCount : null,
+          badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+          mobileBar: true
+        },
+        {
+          id: 'orders',
+          label: 'Supervisão Vistorias',
+          shortLabel: 'Vistorias',
+          icon: ClipboardList,
+          badge: openOrdersCount > 0 ? openOrdersCount : null,
+          badgeColor: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
+          mobileBar: true
+        },
+        {
+          id: 'reports',
+          label: 'Supervisão Relatórios',
+          shortLabel: 'Relatórios',
+          icon: FileBarChart2,
+          badge: reportsCount > 0 ? reportsCount : null,
+          badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+          mobileBar: true
+        },
+        {
+          id: 'actions',
+          label: 'Planos de Ação',
+          shortLabel: 'Ações',
+          icon: AlertOctagon,
+          badge: openActionsCount > 0 ? openActionsCount : null,
+          badgeColor: 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/30',
+          mobileBar: false
+        },
+        {
+          id: 'templates',
+          label: 'Modelos Padrão',
+          shortLabel: 'Modelos',
+          icon: SlidersHorizontal,
+          badge: templatesCount > 0 ? templatesCount : null,
+          badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+          mobileBar: false
+        },
+        {
+          id: 'profile',
+          label: 'Administração & Conta',
+          shortLabel: 'Admin',
+          icon: Award,
+          mobileBar: true
+        }
+      ]
+    : [
+        {
+          id: 'dashboard',
+          label: 'Meu Painel',
+          shortLabel: 'Painel',
+          icon: LayoutDashboard,
+          mobileBar: true
+        },
+        {
+          id: 'orders',
+          label: 'Vistorias & Checklists',
+          shortLabel: 'Vistorias',
+          icon: ClipboardList,
+          badge: openOrdersCount > 0 ? openOrdersCount : null,
+          badgeColor: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
+          mobileBar: true
+        },
+        {
+          id: 'actions',
+          label: 'Planos de Ação',
+          shortLabel: 'Ações',
+          icon: AlertOctagon,
+          badge: openActionsCount > 0 ? openActionsCount : null,
+          badgeColor: 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/30',
+          mobileBar: true
+        },
+        {
+          id: 'agenda',
+          label: 'Agenda & Recorrência',
+          shortLabel: 'Agenda',
+          icon: Calendar,
+          badge: dueAgendaCount > 0 ? dueAgendaCount : null,
+          badgeColor: 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/30',
+          mobileBar: true
+        },
+        {
+          id: 'reports',
+          label: 'Relatórios Técnicos',
+          shortLabel: 'Relatórios',
+          icon: FileBarChart2,
+          badge: reportsCount > 0 ? reportsCount : null,
+          badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+          mobileBar: true
+        },
+        {
+          id: 'units',
+          label: 'Clientes, Unidades & SST',
+          shortLabel: 'Unidades',
+          icon: Building2,
+          badge: unitsCount > 0 ? unitsCount : null,
+          badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+          mobileBar: false
+        },
+        {
+          id: 'templates',
+          label: 'Modelos de Checklist',
+          shortLabel: 'Modelos',
+          icon: SlidersHorizontal,
+          badge: templatesCount > 0 ? templatesCount : null,
+          badgeColor: 'bg-[#1D1F26] text-[#CBD5E1] border-[#2D2F36]',
+          mobileBar: false
+        },
+        {
+          id: 'profile',
+          label: 'Minha Conta & RT',
+          shortLabel: 'Conta',
+          icon: Award,
+          mobileBar: false
+        }
+      ];
 
   const handleSelect = (id) => {
     onSelectTab(id);
@@ -217,12 +281,14 @@ export default function Sidebar({
       <div className={`${isRail ? 'p-2' : 'p-3'} border-t border-[#1F2024] space-y-2.5 pb-safe`}>
         {!isRail && (
           <div className="bg-[#151619] border border-[#232429] rounded-lg p-3 space-y-1 text-[#A1A1AA] text-[11px]">
-            <div className="flex items-center gap-1.5 text-[#34D399] font-semibold">
-              <Activity className="w-3.5 h-3.5 text-[#2EB88A]" />
-              Auditoria & Conformidade
+            <div className={`flex items-center gap-1.5 font-semibold ${isAdmin ? 'text-[#FBBF24]' : 'text-[#34D399]'}`}>
+              <Activity className={`w-3.5 h-3.5 ${isAdmin ? 'text-[#F59E0B]' : 'text-[#2EB88A]'}`} />
+              {isAdmin ? 'Gestão do Sistema' : 'Auditoria & Conformidade'}
             </div>
             <p className="text-[10px] text-[#71717A] leading-tight">
-              Dados sincronizados diretamente na sua conta Supabase.
+              {isAdmin
+                ? 'Administração de usuários, unidades comuns e supervisão geral.'
+                : 'Dados sincronizados diretamente na sua conta Supabase.'}
             </p>
           </div>
         )}
@@ -261,7 +327,7 @@ export default function Sidebar({
                   )}
                 </div>
                 <span className="text-[10px] text-[#71717A] font-mono block truncate">
-                  {userProfile?.registry?.split('/')[0] || 'RT Habilitado'}
+                  {isAdmin ? 'Administrador' : (userProfile?.registry?.split('/')[0] || 'RT Habilitado')}
                 </span>
               </div>
             )}

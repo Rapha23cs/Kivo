@@ -510,18 +510,22 @@ export default function UnitsModule({
                 </div>
 
                 <div className="pt-3 border-t border-[#1F2024] flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onNewOrderForUnit(unit)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Nova Vistoria
-                  </button>
+                  {onNewOrderForUnit && (
+                    <button
+                      type="button"
+                      onClick={() => onNewOrderForUnit(unit)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] rounded-lg text-xs font-semibold transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Nova Vistoria
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setHistoryUnit(unit)}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] border border-[#2D2F36] rounded-lg text-xs font-medium transition"
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] border border-[#2D2F36] rounded-lg text-xs font-medium transition ${
+                      !onNewOrderForUnit ? 'flex-1' : ''
+                    }`}
                   >
                     <History className="w-3.5 h-3.5 text-[#34D399]" />
                     Histórico

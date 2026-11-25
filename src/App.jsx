@@ -218,6 +218,7 @@ export default function App() {
   const [publicAuthMode, setPublicAuthMode] = useState(initialRoute.initialAuthMode);
   const [publicReportToken, setPublicReportToken] = useState(initialRoute.publicReportToken);
   const [userProfile, setUserProfile] = useState(null);
+  const [adminUsers, setAdminUsers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [reports, setReports] = useState([]);
   const [clients, setClients] = useState([]);
@@ -233,6 +234,12 @@ export default function App() {
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileInitialTab, setProfileInitialTab] = useState(null);
+
+  const openProfileModal = (initialTab = null) => {
+    setProfileInitialTab(initialTab);
+    setIsProfileModalOpen(true);
+  };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -358,7 +365,14 @@ export default function App() {
       if (session?.user) {
         try {
           const freshProfile = await DataService.syncSessionUser(session.user);
-          if (freshProfile) setUserProfile(freshProfile);
+          if (freshProfile) {
+            setUserProfile(freshProfile);
+            if (freshProfile.role === 'admin') {
+              DataService.listUserRoles().then(setAdminUsers).catch(() => {});
+            } else {
+              setAdminUsers([]);
+            }
+          }
         } catch (err) {
           console.warn('Falha ao atualizar perfil/papel no Supabase:', err.message);
         }
@@ -581,6 +595,7 @@ export default function App() {
     setSchedules([]);
     setSstItems([]);
     setUserProfile(null);
+    setAdminUsers([]);
     setSelectedOrder(null);
     setPublicAuthMode(null);
     if (typeof window !== 'undefined' && window.location.pathname !== '/') {
@@ -1123,13 +1138,15 @@ export default function App() {
       ? sstItems
       : sstItems.filter((x) => !x.clienteNome || x.clienteNome === selectedClient);
 
+  const isAdmin = userProfile?.role === 'admin';
+
   return (
     <div className="flex h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] overflow-hidden font-sans">
       <Sidebar
         activeTab={activeTab}
         onSelectTab={(tabId) => {
           if (tabId === 'profile') {
-            setIsProfileModalOpen(true);
+            openProfileModal(isAdmin ? 'admin' : 'profile');
             } else if (tabId === 'templates') {
             setIsTemplatesModalOpen(true);
           } else {
@@ -1158,7 +1175,8 @@ export default function App() {
           selectedClient={selectedClient}
           onSelectClient={setSelectedClient}
           onOpenNewOrder={() => setIsNewOrderModalOpen(true)}
-          onOpenProfile={() => setIsProfileModalOpen(true)}
+          onOpenAdminPanel={() => openProfileModal('admin')}
+          onOpenProfile={() => openProfileModal(isAdmin ? 'profile' : 'profile')}
           onOpenMenu={() => setIsMobileMenuOpen(true)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           userProfile={userProfile}
@@ -1195,6 +1213,7 @@ export default function App() {
                   clients={clients}
                   schedules={displayedSchedules}
                   sstItems={displayedSstItems}
+                  adminUsers={adminUsers}
                   userProfile={userProfile}
                   onOpenOrder={(order) => setSelectedOrder(order)}
                   onNewOrder={() => {
@@ -1202,7 +1221,8 @@ export default function App() {
                     setIsNewOrderModalOpen(true);
                   }}
                   onNavigateTab={navigateToTab}
-                  onOpenProfile={() => setIsProfileModalOpen(true)}
+                  onOpenProfile={() => openProfileModal('profile')}
+                  onOpenAdminPanel={() => openProfileModal('admin')}
                 />
               )}
 
@@ -1210,6 +1230,7 @@ export default function App() {
                 <WorkOrderList
                   orders={displayedOrders}
                   clients={clients}
+                  isAdmin={isAdmin}
                   onOpenOrder={(order) => setSelectedOrder(order)}
                   onNewOrder={() => {
                     setPreselectedUnitForNewOrder(null);
@@ -1249,7 +1270,7 @@ export default function App() {
                   reports={displayedReports}
                   sstItems={displayedSstItems}
                   schedules={schedules}
-                  isAdmin={userProfile?.role === 'admin'}
+                  isAdmin={isAdmin}
                   onSaveUnit={handleSaveUnit}
                   onDeleteUnit={handleDeleteUnit}
                   onSaveClient={handleSaveClient}
@@ -1257,7 +1278,7 @@ export default function App() {
                   onSaveSstItem={handleSaveSstItem}
                   onDeleteSstItem={handleDeleteSstItem}
                   onImportUnitsFromOrders={handleImportUnitsFromOrders}
-                  onNewOrderForUnit={(unit) => {
+                  onNewOrderForUnit={isAdmin ? null : (unit) => {
                     setPreselectedUnitForNewOrder(unit);
                     setIsNewOrderModalOpen(true);
                   }}
@@ -1274,6 +1295,7 @@ export default function App() {
                   clients={clients}
                   hospitals={clients.map((c) => ({ clientName: c.nome, name: '' }))}
                   userProfile={userProfile}
+                  isAdmin={isAdmin}
                   initialEditingReport={pendingReportToOpen}
                   onClearInitialEditingReport={() => setPendingReportToOpen(null)}
                   onOpenOrderByCode={(codeOrId) => {
@@ -1361,12 +1383,18 @@ export default function App() {
             isOpen={isProfileModalOpen}
             onClose={() => setIsProfileModalOpen(false)}
             userProfile={userProfile}
+            initialTab={profileInitialTab}
             onSaveProfile={handleSaveProfile}
             onSignOut={supabaseEnabled ? handleSignOut : null}
             isOnline={isOnline}
             pendingSyncCount={pendingSyncCount}
             onSyncNow={handleSyncNow}
             onScreenLockConfigChange={refreshScreenLockConfig}
+            onRolesChanged={() => {
+              if (isAdmin) {
+                DataService.listUserRoles().then(setAdminUsers).catch(() => {});
+              }
+            }}
             stats={{
               clients: clients.length,
               units: units.length,
@@ -1383,6 +1411,7 @@ export default function App() {
             orders={orders}
             reports={reports}
             units={units}
+            isAdmin={isAdmin}
             onSelectOrder={(ord) => setSelectedOrder(ord)}
             onSelectReport={(rep) => {
               navigateToTab('reports');
@@ -1393,7 +1422,7 @@ export default function App() {
               setPreselectedUnitForNewOrder(null);
               setIsNewOrderModalOpen(true);
             }}
-            onOpenProfile={() => setIsProfileModalOpen(true)}
+            onOpenProfile={() => openProfileModal(isAdmin ? 'admin' : 'profile')}
           />
         )}
 

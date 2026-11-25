@@ -14,6 +14,8 @@ import {
   X,
   BarChart3,
   ShieldAlert,
+  ShieldCheck,
+  Users,
   Calendar,
   Clock
 } from 'lucide-react';
@@ -29,12 +31,15 @@ export default function DashboardOverview({
   clients = [],
   schedules = [],
   sstItems = [],
+  adminUsers = [],
   userProfile,
   onOpenOrder,
   onNewOrder,
   onNavigateTab,
-  onOpenProfile
+  onOpenProfile,
+  onOpenAdminPanel
 }) {
+  const isAdmin = userProfile?.role === 'admin';
   const [topicDiscipline, setTopicDiscipline] = useState('all');
   const [hoveredPointId, setHoveredPointId] = useState(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
@@ -51,7 +56,7 @@ export default function DashboardOverview({
   const hasUnitsConfigured = units.length > 0;
   const hasOrdersCreated = orders.length > 0;
   const allStepsDone = hasProfileConfigured && hasUnitsConfigured && hasOrdersCreated;
-  const showOnboarding = !onboardingDismissed && !allStepsDone;
+  const showOnboarding = !isAdmin && !onboardingDismissed && !allStepsDone;
 
   const dismissOnboarding = () => {
     setOnboardingDismissed(true);
@@ -197,41 +202,201 @@ export default function DashboardOverview({
     return list.sort((a, b) => b.weight - a.weight).slice(0, 5);
   }, [orders]);
 
+  const auditorSummaries = React.useMemo(() => {
+    if (!isAdmin) return [];
+    const byKey = new Map();
+
+    const ensureEntry = (key, meta = {}) => {
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          key,
+          userId: meta.userId || null,
+          name: meta.name || meta.email || 'Auditor',
+          email: meta.email || '',
+          role: meta.role || 'auditor',
+          ordersCount: 0,
+          reportsCount: 0,
+          totalConf: 0,
+          ratedOrders: 0
+        });
+      }
+      return byKey.get(key);
+    };
+
+    (adminUsers || []).forEach((u) => {
+      ensureEntry(u.user_id, {
+        userId: u.user_id,
+        name: u.full_name || u.email?.split('@')[0] || 'Usuário',
+        email: u.email,
+        role: u.role
+      });
+    });
+
+    orders.forEach((o) => {
+      const key = o.userId || o.technicianName || 'auditor-desconhecido';
+      const entry = ensureEntry(key, {
+        userId: o.userId,
+        name: o.technicianName || 'Auditor Técnico'
+      });
+      entry.ordersCount += 1;
+      const s = calculateInspectionSummary(o.checklist || []);
+      if (s.totalAvaliados > 0) {
+        entry.totalConf += Number(s.percentualConformidade) || 0;
+        entry.ratedOrders += 1;
+      }
+    });
+
+    reports.forEach((r) => {
+      const key = r.userId || r.responsavel || 'auditor-desconhecido';
+      const entry = ensureEntry(key, {
+        userId: r.userId,
+        name: r.responsavel || 'Auditor Técnico'
+      });
+      entry.reportsCount += 1;
+    });
+
+    return Array.from(byKey.values()).sort(
+      (a, b) => b.ordersCount - a.ordersCount || b.reportsCount - a.reportsCount || a.name.localeCompare(b.name)
+    );
+  }, [isAdmin, adminUsers, orders, reports]);
+
   return (
     <div className="space-y-6">
       {/* Greeting Banner */}
       <div className="bg-[#141518] border border-[#232429] rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] font-medium text-[#A1A1AA] bg-[#1A1B20] px-2.5 py-0.5 rounded border border-[#27282E]">
-              AUDITOR RT: {userProfile?.registry || 'RT Habilitado'}
-            </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin ? (
+              <span className="font-mono text-[11px] font-semibold text-[#FBBF24] bg-[#221A10] px-2.5 py-0.5 rounded border border-[#F59E0B]/40">
+                ADMINISTRAÇÃO DO SISTEMA
+              </span>
+            ) : (
+              <span className="font-mono text-[11px] font-medium text-[#A1A1AA] bg-[#1A1B20] px-2.5 py-0.5 rounded border border-[#27282E]">
+                AUDITOR RT: {userProfile?.registry || 'RT Habilitado'}
+              </span>
+            )}
           </div>
           <h1 className="text-2xl font-bold text-[#F4F4F5] tracking-tight">
-            Olá, {userProfile?.name || 'Auditor Técnico'}
+            {isAdmin
+              ? `Painel Administrativo — ${userProfile?.name || 'Administrador'}`
+              : `Olá, ${userProfile?.name || 'Auditor Técnico'}`}
           </h1>
           <p className="text-xs text-[#71717A] max-w-xl">
-            Visão consolidada das vistorias técnicas (Meio Ambiente e Segurança do Trabalho), desvios identificados e relatórios salvos no Supabase.
+            {isAdmin
+              ? 'Gestão central do sistema Kivo: administração de usuários, catálogo comum de unidades no Maranhão e supervisão global de vistorias e relatórios.'
+              : 'Visão consolidada das vistorias técnicas (Meio Ambiente e Segurança do Trabalho), desvios identificados e relatórios salvos no Supabase.'}
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => onNavigateTab('reports')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1A1B20] hover:bg-[#23252C] text-[#F4F4F5] border border-[#2C2E36] rounded-lg text-xs font-medium transition"
-          >
-            <FileBarChart2 className="w-4 h-4 text-[#A1A1AA]" />
-            Relatórios Técnicos
-          </button>
-          <button
-            onClick={onNewOrder}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#080A09] rounded-lg text-xs font-bold transition"
-          >
-            <Plus className="w-4 h-4" />
-            Nova Vistoria
-          </button>
+          {isAdmin ? (
+            <>
+              <button
+                onClick={() => onNavigateTab('units')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1A1B20] hover:bg-[#23252C] text-[#F4F4F5] border border-[#2C2E36] rounded-lg text-xs font-medium transition"
+              >
+                <Building2 className="w-4 h-4 text-[#34D399]" />
+                Unidades &amp; Rotas (MA)
+              </button>
+              <button
+                onClick={onOpenAdminPanel || onOpenProfile}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#F59E0B] hover:bg-[#FBBF24] text-[#080A09] rounded-lg text-xs font-bold transition"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Gerenciar Usuários
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => onNavigateTab('reports')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1A1B20] hover:bg-[#23252C] text-[#F4F4F5] border border-[#2C2E36] rounded-lg text-xs font-medium transition"
+              >
+                <FileBarChart2 className="w-4 h-4 text-[#A1A1AA]" />
+                Relatórios Técnicos
+              </button>
+              <button
+                onClick={onNewOrder}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#2EB88A] hover:bg-[#34D399] text-[#080A09] rounded-lg text-xs font-bold transition"
+              >
+                <Plus className="w-4 h-4" />
+                Nova Vistoria
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Resumo Executivo de Usuários / Auditores (Exclusivo Admin) */}
+      {isAdmin && (
+        <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#FBBF24]" />
+              <div>
+                <h2 className="text-sm font-semibold text-[#F4F4F5]">
+                  Contas &amp; Atividade dos Auditores
+                </h2>
+                <p className="text-[11px] text-[#71717A]">
+                  {adminUsers.length} conta(s) registrada(s) • {adminUsers.filter((u) => u.role === 'auditor').length} auditor(es) e {adminUsers.filter((u) => u.role === 'admin').length} admin(s)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenAdminPanel || onOpenProfile}
+              className="text-xs font-medium text-[#FBBF24] hover:underline flex items-center gap-1 self-start sm:self-center"
+            >
+              Gerenciar papéis <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {auditorSummaries.length === 0 ? (
+            <p className="text-xs text-[#71717A] py-3">
+              Nenhuma atividade ou conta sincronizada ainda.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-xs">
+              {auditorSummaries.map((aud) => {
+                const avg = aud.ratedOrders > 0 ? Math.round(aud.totalConf / aud.ratedOrders) : null;
+                return (
+                  <div
+                    key={aud.key}
+                    className="bg-[#0E0F12] border border-[#232429] rounded-lg p-3.5 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-[#F4F4F5] truncate">{aud.name}</span>
+                        <span
+                          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${
+                            aud.role === 'admin'
+                              ? 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/40'
+                              : 'bg-[#18191D] text-[#A1A1AA] border-[#27282E]'
+                          }`}
+                        >
+                          {aud.role}
+                        </span>
+                      </div>
+                      {aud.email && (
+                        <p className="text-[11px] text-[#71717A] truncate">{aud.email}</p>
+                      )}
+                      <p className="text-[11px] text-[#A1A1AA] mt-1">
+                        {aud.ordersCount} vistoria(s) • {aud.reportsCount} relatório(s)
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] text-[#71717A] block">Média</span>
+                      <span className="font-mono font-bold text-[#34D399]">
+                        {avg !== null ? `${avg}%` : '—'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Onboarding Rápido (Fluxo inicial de conta + unidades + 1ª vistoria) */}
       {showOnboarding && (
@@ -645,7 +810,13 @@ export default function DashboardOverview({
 
           {orders.length === 0 ? (
             <div className="p-8 text-center text-xs text-[#71717A] border border-dashed border-[#232429] rounded-lg">
-              Nenhuma inspeção registrada ainda. Clique em <strong className="text-[#F4F4F5]">Nova Vistoria</strong> para começar.
+              {isAdmin ? (
+                'Nenhuma vistoria registrada pelos auditores ainda.'
+              ) : (
+                <>
+                  Nenhuma inspeção registrada ainda. Clique em <strong className="text-[#F4F4F5]">Nova Vistoria</strong> para começar.
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -681,6 +852,7 @@ export default function DashboardOverview({
                       <p className="text-[11px] text-[#71717A] flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-[#71717A]" />
                         {order.regional} • {order.municipio}
+                        {isAdmin && order.technicianName ? ` • Auditor: ${order.technicianName}` : ''}
                       </p>
                     </div>
 
@@ -716,13 +888,15 @@ export default function DashboardOverview({
 
           {reports.length === 0 ? (
             <div className="p-6 text-center text-xs text-[#71717A] border border-dashed border-[#232429] rounded-lg space-y-2">
-              <p>Nenhum relatório técnico criado.</p>
-              <button
-                onClick={() => onNavigateTab('reports')}
-                className="text-[#34D399] hover:underline font-medium"
-              >
-                Criar ou importar de um checklist
-              </button>
+              <p>Nenhum relatório técnico emitido ainda.</p>
+              {!isAdmin && (
+                <button
+                  onClick={() => onNavigateTab('reports')}
+                  className="text-[#34D399] hover:underline font-medium"
+                >
+                  Criar ou importar de um checklist
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-2.5">

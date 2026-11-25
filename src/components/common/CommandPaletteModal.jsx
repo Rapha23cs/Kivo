@@ -16,6 +16,7 @@ export default function CommandPaletteModal({
   orders = [],
   reports = [],
   units = [],
+  isAdmin = false,
   onSelectOrder,
   onSelectReport,
   onNavigateTab,
@@ -37,18 +38,22 @@ export default function CommandPaletteModal({
     const list = [];
 
     const quickActions = [
-      {
-        id: 'act-new-order',
-        group: 'Ações Rápidas',
-        label: 'Nova Vistoria / Checklist',
-        meta: 'Iniciar auditoria de 63 itens',
-        icon: Plus,
-        run: () => onNewOrder?.()
-      },
+      ...(isAdmin
+        ? []
+        : [
+            {
+              id: 'act-new-order',
+              group: 'Ações Rápidas',
+              label: 'Nova Vistoria / Checklist',
+              meta: 'Iniciar auditoria de 63 itens',
+              icon: Plus,
+              run: () => onNewOrder?.()
+            }
+          ]),
       {
         id: 'act-orders',
         group: 'Navegação',
-        label: 'Ir para Vistorias & Checklists',
+        label: isAdmin ? 'Ir para Supervisão de Vistorias' : 'Ir para Vistorias & Checklists',
         meta: `${orders.length} vistoria(s)`,
         icon: ClipboardList,
         run: () => onNavigateTab?.('orders')
@@ -56,7 +61,7 @@ export default function CommandPaletteModal({
       {
         id: 'act-reports',
         group: 'Navegação',
-        label: 'Ir para Relatórios Técnicos',
+        label: isAdmin ? 'Ir para Supervisão de Relatórios' : 'Ir para Relatórios Técnicos',
         meta: `${reports.length} relatório(s)`,
         icon: FileBarChart2,
         run: () => onNavigateTab?.('reports')
@@ -64,7 +69,7 @@ export default function CommandPaletteModal({
       {
         id: 'act-units',
         group: 'Navegação',
-        label: 'Ir para Clientes & Unidades',
+        label: isAdmin ? 'Ir para Unidades & Rotas (MA)' : 'Ir para Clientes & Unidades',
         meta: `${units.length} unidade(s)`,
         icon: Building2,
         run: () => onNavigateTab?.('units')
@@ -72,8 +77,8 @@ export default function CommandPaletteModal({
       {
         id: 'act-profile',
         group: 'Navegação',
-        label: 'Minha Conta & Perfil RT',
-        meta: 'Registro profissional, senha e cache offline',
+        label: isAdmin ? 'Administração & Usuários' : 'Minha Conta & Perfil RT',
+        meta: isAdmin ? 'Gerenciar papéis e segurança do sistema' : 'Registro profissional, senha e cache offline',
         icon: Award,
         run: () => onOpenProfile?.()
       }

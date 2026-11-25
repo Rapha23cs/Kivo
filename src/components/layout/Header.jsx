@@ -12,6 +12,7 @@ import {
   Bell,
   Calendar,
   ShieldAlert,
+  ShieldCheck,
   AlertTriangle,
   CheckCircle2,
   Lock
@@ -24,6 +25,7 @@ export default function Header({
   selectedClient,
   onSelectClient,
   onOpenNewOrder,
+  onOpenAdminPanel,
   onOpenProfile,
   onOpenMenu,
   onOpenCommandPalette,
@@ -290,21 +292,34 @@ export default function Header({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenNewOrder}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] rounded-lg text-xs font-semibold transition border border-[#2D2F36]"
-          title="Nova Vistoria"
-        >
-          <Plus className="w-3.5 h-3.5 text-[#34D399]" />
-          <span className="hidden sm:inline">Nova Vistoria</span>
-          <span className="sm:hidden">Nova</span>
-        </button>
+        {userProfile?.role === 'admin' ? (
+          <button
+            type="button"
+            onClick={onOpenAdminPanel || onOpenProfile}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-[#221A10] hover:bg-[#2E2212] text-[#FBBF24] rounded-lg text-xs font-semibold transition border border-[#F59E0B]/40"
+            title="Abrir Administração de Usuários e Sistema"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Gestão Admin</span>
+            <span className="sm:hidden">Admin</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenNewOrder}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-[#1C1D22] hover:bg-[#25272E] text-[#F4F4F5] rounded-lg text-xs font-semibold transition border border-[#2D2F36]"
+            title="Nova Vistoria"
+          >
+            <Plus className="w-3.5 h-3.5 text-[#34D399]" />
+            <span className="hidden sm:inline">Nova Vistoria</span>
+            <span className="sm:hidden">Nova</span>
+          </button>
+        )}
 
         <div
           onClick={onOpenProfile}
           className="flex items-center gap-2 pl-2 border-l border-[#1F2024] cursor-pointer hover:opacity-90 transition group"
-          title="Editar perfil do responsável técnico"
+          title={userProfile?.role === 'admin' ? 'Administração e Conta' : 'Editar perfil do responsável técnico'}
         >
           {userProfile?.avatarUrl ? (
             <img
@@ -329,7 +344,9 @@ export default function Header({
               )}
             </div>
             <span className="text-[10px] text-[#71717A] font-mono">
-              {userProfile?.registry?.split('/')[0] || 'RT Habilitado'}
+              {userProfile?.role === 'admin'
+                ? 'Administrador do Sistema'
+                : (userProfile?.registry?.split('/')[0] || 'RT Habilitado')}
             </span>
           </div>
         </div>
