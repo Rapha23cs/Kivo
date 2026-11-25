@@ -4,6 +4,37 @@ import { EMSERH_BASE_ITEMS } from '../data/emserhChecklistData';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseConfig';
 import { OfflineStore, safeLocalStorageGet, safeLocalStorageSet } from '../offline/offlineStore';
 import { AuditService } from './auditService';
+import { findMaranhaoMunicipality } from '../data/maranhaoMunicipalities';
+
+function normalizeUnitCoordinates(unitData, municipioFallback) {
+  const rawLat = unitData?.latitude;
+  const rawLng = unitData?.longitude;
+  const lat = rawLat !== null && rawLat !== undefined && rawLat !== '' ? Number(rawLat) : null;
+  const lng = rawLng !== null && rawLng !== undefined && rawLng !== '' ? Number(rawLng) : null;
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return {
+      latitude: Number(lat.toFixed(6)),
+      longitude: Number(lng.toFixed(6)),
+      geocodePrecision: unitData?.geocodePrecision || 'exata'
+    };
+  }
+
+  const city = findMaranhaoMunicipality(municipioFallback);
+  if (city) {
+    return {
+      latitude: city.lat,
+      longitude: city.lng,
+      geocodePrecision: 'municipio'
+    };
+  }
+
+  return {
+    latitude: null,
+    longitude: null,
+    geocodePrecision: null
+  };
+}
 
 const LS_PROFILE_KEY = 'kivo_user_profile';
 const LS_ORDERS_KEY = 'kivo_work_orders';
@@ -573,6 +604,8 @@ export const DataService = {
         ? list[existingIdx].id
         : unitData.id || `local-unit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
+    const geo = normalizeUnitCoordinates(unitData, municipio);
+
     const record = {
       id: localId,
       clienteId: unitData.clienteId || (existingIdx >= 0 ? list[existingIdx].clienteId : null),
@@ -584,6 +617,9 @@ export const DataService = {
       municipio,
       uf: (unitData.uf || 'MA').trim().toUpperCase(),
       endereco: (unitData.endereco || '').trim(),
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      geocodePrecision: geo.geocodePrecision,
       responsavelLocal: (unitData.responsavelLocal || '').trim(),
       contatoLocal: (unitData.contatoLocal || '').trim(),
       ativo: true,
@@ -665,7 +701,7 @@ export const DataService = {
       }
     }
 
-    const payload = {
+    const basePayload = {
       user_id: user.id,
       cliente_id: clienteId,
       cliente_nome: unitRecord.clienteNome || '',
@@ -681,21 +717,46 @@ export const DataService = {
       ativo: true
     };
 
-    if (isUuid(unitRecord.id)) {
-      const { data, error } = await client
+    const geoPayload = {
+      ...basePayload,
+      latitude: unitRecord.latitude ?? null,
+      longitude: unitRecord.longitude ?? null,
+      geocode_precision: unitRecord.geocodePrecision || null
+    };
+
+    const persistPayload = async (rowPayload) => {
+      if (isUuid(unitRecord.id)) {
+        const res = await client
+          .from('unidades')
+          .update(rowPayload)
+          .eq('id', unitRecord.id)
+          .select('id, cliente_id')
+          .single();
+        if (!res.error && res.data) return res;
+        if (res.error) return res;
+      }
+
+      return client
         .from('unidades')
-        .update(payload)
-        .eq('id', unitRecord.id)
+        .upsert(rowPayload, { onConflict: 'user_id,cliente_nome,nome' })
         .select('id, cliente_id')
         .single();
-      if (!error && data) return data;
-    }
+    };
 
-    const { data, error } = await client
-      .from('unidades')
-      .upsert(payload, { onConflict: 'user_id,cliente_nome,nome' })
-      .select('id, cliente_id')
-      .single();
+    let { data, error } = await persistPayload(geoPayload);
+
+    if (
+      error &&
+      (error.code === 'PGRST204' ||
+        error.code === '42703' ||
+        error.message?.includes('latitude') ||
+        error.message?.includes('longitude') ||
+        error.message?.includes('geocode_precision'))
+    ) {
+      const retry = await persistPayload(basePayload);
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       if (error.code === '42P01' || error.code === 'PGRST205') return null;
@@ -1128,23 +1189,36 @@ export const DataService = {
         .eq('ativo', true)
         .order('nome', { ascending: true });
       if (!uErr && Array.isArray(uData)) {
-        const mappedRemoteUnits = uData.map((u) => ({
-          id: u.id,
-          supabaseId: u.id,
-          clienteId: u.cliente_id || null,
-          clienteNome: u.cliente_nome || '',
-          codigo: u.codigo || '',
-          nome: u.nome,
-          tipo: u.tipo || 'Hospital',
-          regional: u.regional,
-          municipio: u.municipio,
-          uf: u.uf || 'MA',
-          endereco: u.endereco || '',
-          responsavelLocal: u.responsavel_local || '',
-          contatoLocal: u.contato_local || '',
-          ativo: u.ativo !== false,
-          updatedAt: u.updated_at
-        }));
+        const mappedRemoteUnits = uData.map((u) => {
+          const geo = normalizeUnitCoordinates(
+            {
+              latitude: u.latitude,
+              longitude: u.longitude,
+              geocodePrecision: u.geocode_precision
+            },
+            u.municipio
+          );
+          return {
+            id: u.id,
+            supabaseId: u.id,
+            clienteId: u.cliente_id || null,
+            clienteNome: u.cliente_nome || '',
+            codigo: u.codigo || '',
+            nome: u.nome,
+            tipo: u.tipo || 'Hospital',
+            regional: u.regional,
+            municipio: u.municipio,
+            uf: u.uf || 'MA',
+            endereco: u.endereco || '',
+            latitude: geo.latitude,
+            longitude: geo.longitude,
+            geocodePrecision: geo.geocodePrecision,
+            responsavelLocal: u.responsavel_local || '',
+            contatoLocal: u.contato_local || '',
+            ativo: u.ativo !== false,
+            updatedAt: u.updated_at
+          };
+        });
         const delUnits = new Set(pending.deleteUnits || []);
         const dirtyUnits = new Set(pending.upsertUnits || []);
         const localByUnit = new Map(units.map((u) => [u.id, u]));

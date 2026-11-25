@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useMemo } from 'react';
 import {
   Building2,
   Plus,
@@ -16,7 +16,8 @@ import {
   Sparkles,
   ExternalLink,
   Upload,
-  ShieldCheck
+  ShieldCheck,
+  Route
 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { useFeedback } from '../common/FeedbackProvider';
@@ -25,6 +26,14 @@ import { compressImageToDataUrl } from '../../supabase/dataService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import SstInventoryPanel from './SstInventoryPanel';
 import { getExpiryStatus } from '../../supabase/operationsService';
+import {
+  MARANHAO_MUNICIPALITIES,
+  findMaranhaoMunicipality,
+  resolveUnitCoordinates
+} from '../../data/maranhaoMunicipalities';
+
+const MaranhaoUnitLocationPicker = lazy(() => import('./MaranhaoUnitLocationPicker'));
+const MaranhaoRoutesPlanner = lazy(() => import('./MaranhaoRoutesPlanner'));
 
 const UNIT_TYPES = [
   'Hospital',
@@ -47,6 +56,9 @@ const BLANK_UNIT = {
   municipio: '',
   uf: 'MA',
   endereco: '',
+  latitude: null,
+  longitude: null,
+  geocodePrecision: 'municipio',
   responsavelLocal: '',
   contatoLocal: ''
 };
@@ -57,6 +69,7 @@ export default function UnitsModule({
   orders = [],
   reports = [],
   sstItems = [],
+  schedules = [],
   onSaveUnit,
   onDeleteUnit,
   onSaveClient,
@@ -280,6 +293,19 @@ export default function UnitsModule({
             </span>
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('routes_map')}
+          className={`px-3.5 py-2.5 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+            activeSection === 'routes_map'
+              ? 'border-[#2EB88A] text-[#34D399] font-semibold'
+              : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+          }`}
+        >
+          <Route className="w-3.5 h-3.5" />
+          <span>Mapa &amp; Rotas (MA)</span>
+        </button>
       </div>
 
       {activeSection === 'sst_inventory' ? (
@@ -289,6 +315,22 @@ export default function UnitsModule({
           onSaveItem={onSaveSstItem}
           onDeleteItem={onDeleteSstItem}
         />
+      ) : activeSection === 'routes_map' ? (
+        <Suspense
+          fallback={
+            <div className="bg-[#141518] border border-[#232429] rounded-xl p-10 text-center text-xs text-[#71717A]">
+              Carregando mapa e planejador de rotas do Maranhão...
+            </div>
+          }
+        >
+          <MaranhaoRoutesPlanner
+            units={units}
+            orders={orders}
+            schedules={schedules}
+            sstItems={sstItems}
+            onNewOrderForUnit={onNewOrderForUnit}
+          />
+        </Suspense>
       ) : (
         <>
           {/* Busca e Filtro */}
@@ -353,6 +395,7 @@ export default function UnitsModule({
             );
             const latestOrder = unitOrders[0] || null;
             const latestSummary = latestOrder ? calculateInspectionSummary(latestOrder.checklist || []) : null;
+            const unitGeo = resolveUnitCoordinates(unit);
 
             return (
               <div
@@ -410,10 +453,22 @@ export default function UnitsModule({
                       {unit.clienteNome || 'Cliente não vinculado'}
                     </p>
                     <p className="text-[11px] text-[#71717A] flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3 shrink-0" />
+                      <MapPin className={`w-3 h-3 shrink-0 ${unitGeo?.precision === 'exata' ? 'text-[#34D399]' : 'text-[#71717A]'}`} />
                       <span className="truncate">
                         {unit.regional} • {unit.municipio}{unit.uf ? `/${unit.uf}` : ''}
                       </span>
+                      {unitGeo && (
+                        <span
+                          className={`ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded border shrink-0 ${
+                            unitGeo.precision === 'exata'
+                              ? 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30'
+                              : 'bg-[#18191D] text-[#A1A1AA] border-[#27282E]'
+                          }`}
+                          title={`Coordenadas: ${unitGeo.lat}, ${unitGeo.lng}`}
+                        >
+                          {unitGeo.precision === 'exata' ? 'GPS exato' : 'Sede mun.'}
+                        </span>
+                      )}
                     </p>
                     {unit.responsavelLocal && (
                       <p className="text-[11px] text-[#A1A1AA] flex items-center gap-1 mt-1 truncate">
@@ -562,15 +617,31 @@ export default function UnitsModule({
                 </div>
 
                 <div>
-                  <label className="block text-[#A1A1AA] font-medium mb-1">Município *</label>
+                  <label className="block text-[#A1A1AA] font-medium mb-1">Município (MA) *</label>
                   <input
                     type="text"
                     required
+                    list="kivo-ma-municipalities-list"
                     value={editingUnit.municipio || ''}
-                    onChange={(e) => setEditingUnit({ ...editingUnit, municipio: e.target.value })}
+                    onChange={(e) => {
+                      const nextMun = e.target.value;
+                      const city = findMaranhaoMunicipality(nextMun);
+                      setEditingUnit((prev) => ({
+                        ...prev,
+                        municipio: nextMun,
+                        ...(city && prev.geocodePrecision !== 'exata'
+                          ? { latitude: city.lat, longitude: city.lng, geocodePrecision: 'municipio' }
+                          : {})
+                      }));
+                    }}
                     placeholder="Ex: São Luís"
                     className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                   />
+                  <datalist id="kivo-ma-municipalities-list">
+                    {MARANHAO_MUNICIPALITIES.map((mun) => (
+                      <option key={mun.codigoIbge} value={mun.nome} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>
@@ -617,6 +688,30 @@ export default function UnitsModule({
                     className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2 text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
                   />
                 </div>
+
+                <Suspense
+                  fallback={
+                    <div className="sm:col-span-2 h-56 rounded-xl bg-[#0D0E10] border border-[#232429] flex items-center justify-center text-[11px] text-[#71717A]">
+                      Carregando mapa do Maranhão...
+                    </div>
+                  }
+                >
+                  <MaranhaoUnitLocationPicker
+                    municipio={editingUnit.municipio}
+                    endereco={editingUnit.endereco}
+                    latitude={editingUnit.latitude}
+                    longitude={editingUnit.longitude}
+                    geocodePrecision={editingUnit.geocodePrecision}
+                    onChange={({ latitude, longitude, geocodePrecision }) =>
+                      setEditingUnit((prev) => ({
+                        ...prev,
+                        latitude,
+                        longitude,
+                        geocodePrecision
+                      }))
+                    }
+                  />
+                </Suspense>
               </div>
 
               <div className="pt-4 border-t border-[#1F2024] flex items-center justify-end gap-2 pb-safe">

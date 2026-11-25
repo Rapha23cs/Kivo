@@ -1237,6 +1237,7 @@ export default function App() {
                   orders={displayedOrders}
                   reports={displayedReports}
                   sstItems={displayedSstItems}
+                  schedules={schedules}
                   onSaveUnit={handleSaveUnit}
                   onDeleteUnit={handleDeleteUnit}
                   onSaveClient={handleSaveClient}

@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { OfflineStore } from '../offline/offlineStore';
 import { OperationsService, computeNextScheduleDate, getExpiryStatus } from '../supabase/operationsService';
 import { SyncEngine } from '../offline/syncEngine';
+import { DataService } from '../supabase/dataService';
+import {
+  MARANHAO_MUNICIPALITIES,
+  findMaranhaoMunicipality,
+  isWithinMaranhaoBounds,
+  resolveUnitCoordinates
+} from '../data/maranhaoMunicipalities';
 
 function createMemoryStorage() {
   const store = new Map();
@@ -96,5 +103,27 @@ describe('Fila Offline, Agenda Recorrente e Vencimentos SST', () => {
     expect(Array.isArray(res.templates)).toBe(true);
     expect(Array.isArray(res.schedules)).toBe(true);
     expect(Array.isArray(res.sstItems)).toBe(true);
+  });
+
+  it('cobre os 217 municípios do Maranhão e resolve coordenadas com fallback automático', async () => {
+    expect(MARANHAO_MUNICIPALITIES).toHaveLength(217);
+    expect(MARANHAO_MUNICIPALITIES.every((m) => isWithinMaranhaoBounds(m.lat, m.lng))).toBe(true);
+
+    const saoLuis = findMaranhaoMunicipality('Sao Luis - MA');
+    expect(saoLuis?.nome).toBe('São Luís');
+
+    const approx = resolveUnitCoordinates({ municipio: 'Imperatriz' });
+    expect(approx?.precision).toBe('municipio');
+    expect(approx?.lat).toBeLessThan(0);
+
+    const saved = await DataService.saveUnit({
+      clienteNome: 'EMSERH',
+      nome: 'Hospital Macrorregional',
+      regional: 'Caxias',
+      municipio: 'Caxias'
+    });
+    expect(saved).toHaveLength(1);
+    expect(saved[0].geocodePrecision).toBe('municipio');
+    expect(isWithinMaranhaoBounds(saved[0].latitude, saved[0].longitude)).toBe(true);
   });
 });
