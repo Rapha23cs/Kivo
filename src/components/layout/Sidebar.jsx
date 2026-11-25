@@ -250,9 +250,16 @@ export default function Sidebar({
             )}
             {!isRail && (
               <div className="overflow-hidden">
-                <span className="font-semibold text-[#F4F4F5] text-xs block truncate leading-tight">
-                  {userProfile?.name || 'Auditor Técnico'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-[#F4F4F5] text-xs block truncate leading-tight">
+                    {userProfile?.name || 'Auditor Técnico'}
+                  </span>
+                  {userProfile?.role === 'admin' && (
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/40 shrink-0">
+                      Admin
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] text-[#71717A] font-mono block truncate">
                   {userProfile?.registry?.split('/')[0] || 'RT Habilitado'}
                 </span>

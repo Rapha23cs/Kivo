@@ -1238,6 +1238,7 @@ export default function App() {
                   reports={displayedReports}
                   sstItems={displayedSstItems}
                   schedules={schedules}
+                  isAdmin={userProfile?.role === 'admin'}
                   onSaveUnit={handleSaveUnit}
                   onDeleteUnit={handleDeleteUnit}
                   onSaveClient={handleSaveClient}

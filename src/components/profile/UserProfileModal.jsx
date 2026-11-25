@@ -18,12 +18,13 @@ import {
   Palette,
   QrCode,
   History,
-  KeyRound
+  KeyRound,
+  Users
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getSupabaseClient } from '../../supabase/supabaseConfig';
 import { AuditService } from '../../supabase/auditService';
-import { compressImageToDataUrl } from '../../supabase/dataService';
+import { DataService, compressImageToDataUrl } from '../../supabase/dataService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
 import { validateStrongPassword, hashPinSha256 } from '../../utils/securityHelpers';
 import { KIVO_ACCENT_PRESETS } from '../../utils/themePalette';
@@ -79,6 +80,11 @@ export default function UserProfileModal({
     }
   });
   const [deviceFeedback, setDeviceFeedback] = useState(null);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminFeedback, setAdminFeedback] = useState(null);
+  const [adminUpdatingId, setAdminUpdatingId] = useState(null);
+  const isAdmin = userProfile?.role === 'admin';
 
   useEffect(() => {
     setProfile({ ...userProfile });
@@ -100,12 +106,32 @@ export default function UserProfileModal({
     }
   };
 
+  const loadAdminUsers = async () => {
+    if (!isOnline || !isAdmin) return;
+    setAdminLoading(true);
+    setAdminFeedback(null);
+    try {
+      const list = await DataService.listUserRoles();
+      setAdminUsers(list);
+    } catch (err) {
+      setAdminFeedback({
+        type: 'error',
+        text: err?.message || 'Não foi possível carregar usuários (aplique a migration 013 no Supabase).'
+      });
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && activeTab === 'security') {
       loadMfaFactors();
       AuditService.listRecent(15).then(setAuditLogs);
     }
-  }, [isOpen, activeTab]);
+    if (isOpen && activeTab === 'admin' && isAdmin) {
+      loadAdminUsers();
+    }
+  }, [isOpen, activeTab, isAdmin]);
 
   if (!isOpen) return null;
 
@@ -363,8 +389,13 @@ export default function UserProfileModal({
               <User className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold text-[#F4F4F5] text-sm sm:text-base truncate">
-                Minha Conta & Perfil RT
+              <h3 className="font-semibold text-[#F4F4F5] text-sm sm:text-base truncate flex items-center gap-2">
+                <span>Minha Conta &amp; Perfil RT</span>
+                {isAdmin && (
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/40">
+                    Admin
+                  </span>
+                )}
               </h3>
               <p className="text-[11px] text-[#71717A] truncate">
                 {userProfile?.email || 'Conta Supabase autenticada'}
@@ -423,6 +454,20 @@ export default function UserProfileModal({
               </span>
             )}
           </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('admin')}
+              className={`py-2.5 border-b-2 flex items-center gap-1.5 whitespace-nowrap transition ${
+                activeTab === 'admin'
+                  ? 'border-[#F59E0B] text-[#FBBF24] font-semibold'
+                  : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Administração
+            </button>
+          )}
         </div>
 
         {/* Conteúdo */}
@@ -1026,6 +1071,131 @@ export default function UserProfileModal({
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {activeTab === 'admin' && isAdmin && (
+            <div className="space-y-4">
+              <div className="bg-[#141518] border border-[#F59E0B]/30 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#FBBF24]" />
+                    <h4 className="font-semibold text-[#F4F4F5] text-sm">
+                      Controle Administrativo do Sistema
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadAdminUsers}
+                    disabled={adminLoading}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#0D0E10] hover:bg-[#1C1D22] text-[#E4E4E7] border border-[#27282E] rounded-lg text-[11px] transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3 h-3 text-[#34D399] ${adminLoading ? 'animate-spin' : ''}`} />
+                    Atualizar
+                  </button>
+                </div>
+                <p className="text-[11px] text-[#A1A1AA]">
+                  • <strong>Unidades:</strong> compartilhadas entre todos os usuários; apenas Admins podem excluir unidades.<br />
+                  • <strong>Vistorias e Relatórios:</strong> exclusivos de cada auditor no dia a dia, com acesso administrativo completo para contas Admin.
+                </p>
+              </div>
+
+              {adminFeedback && (
+                <div
+                  className={`p-3 rounded-lg border text-xs ${
+                    adminFeedback.type === 'error'
+                      ? 'bg-[#221216] border-[#F43F5E]/40 text-[#FB7185]'
+                      : 'bg-[#122620] border-[#2EB88A]/40 text-[#34D399]'
+                  }`}
+                >
+                  {adminFeedback.text}
+                </div>
+              )}
+
+              <div className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-[#1F2024] flex items-center justify-between">
+                  <span className="font-semibold text-[#E4E4E7] text-xs">
+                    Usuários cadastrados no Supabase ({adminUsers.length})
+                  </span>
+                </div>
+
+                {!isOnline ? (
+                  <p className="p-4 text-[11px] text-[#71717A] text-center">
+                    Conecte-se à internet para listar e gerenciar usuários.
+                  </p>
+                ) : adminLoading && adminUsers.length === 0 ? (
+                  <p className="p-4 text-[11px] text-[#71717A] text-center">Carregando usuários...</p>
+                ) : adminUsers.length === 0 ? (
+                  <p className="p-4 text-[11px] text-[#71717A] text-center">
+                    Nenhum usuário encontrado. Aplique a migration 013 no Supabase SQL Editor para sincronizar a tabela user_roles.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[#1F2024] max-h-72 overflow-y-auto">
+                    {adminUsers.map((u) => {
+                      const isSelf = u.user_id === userProfile?.userId;
+                      const nextRole = u.role === 'admin' ? 'auditor' : 'admin';
+                      return (
+                        <div key={u.user_id} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-[#F4F4F5] truncate">
+                                {u.full_name || u.email || 'Usuário'}
+                              </span>
+                              <span
+                                className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                  u.role === 'admin'
+                                    ? 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/40'
+                                    : 'bg-[#18191D] text-[#A1A1AA] border-[#27282E]'
+                                }`}
+                              >
+                                {u.role}
+                              </span>
+                              {isSelf && (
+                                <span className="text-[10px] text-[#34D399]">(Você)</span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-[#71717A] truncate block">{u.email}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={adminUpdatingId === u.user_id}
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: nextRole === 'admin' ? 'Promover para Admin?' : 'Remover acesso Admin?',
+                                message:
+                                  nextRole === 'admin'
+                                    ? `${u.email} passará a poder excluir unidades e visualizar/gerenciar vistorias e relatórios do sistema.`
+                                    : `${u.email} voltará ao perfil Auditor (acesso restrito aos próprios dados e unidades em comum).`,
+                                confirmLabel: nextRole === 'admin' ? 'Promover a Admin' : 'Definir Auditor',
+                                variant: nextRole === 'admin' ? 'warning' : 'danger'
+                              });
+                              if (!ok) return;
+                              setAdminUpdatingId(u.user_id);
+                              setAdminFeedback(null);
+                              try {
+                                await DataService.updateUserRole(u.user_id, nextRole);
+                                await loadAdminUsers();
+                                setAdminFeedback({
+                                  type: 'success',
+                                  text: `Papel de ${u.email} atualizado para ${nextRole}.`
+                                });
+                              } catch (err) {
+                                setAdminFeedback({ type: 'error', text: err.message });
+                              } finally {
+                                setAdminUpdatingId(null);
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-[#0D0E10] hover:bg-[#1C1D22] disabled:opacity-50 text-[#E4E4E7] border border-[#27282E] rounded-lg text-[11px] font-medium transition shrink-0"
+                          >
+                            {u.role === 'admin' ? 'Tornar Auditor' : 'Tornar Admin'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

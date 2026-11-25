@@ -28,6 +28,7 @@ describe('Fila Offline, Agenda Recorrente e Vencimentos SST', () => {
       configurable: true
     });
     OperationsService.clearLocalCaches();
+    DataService.clearLocalCaches();
     await OfflineStore.clearAllDataCaches();
   });
 
@@ -125,5 +126,34 @@ describe('Fila Offline, Agenda Recorrente e Vencimentos SST', () => {
     expect(saved).toHaveLength(1);
     expect(saved[0].geocodePrecision).toBe('municipio');
     expect(isWithinMaranhaoBounds(saved[0].latitude, saved[0].longitude)).toBe(true);
+  });
+
+  it('preserva unidade comum ao excluir vistoria vinculada e impede auto-promoção para admin', async () => {
+    const units = await DataService.saveUnit({
+      clienteNome: 'EMSERH',
+      nome: 'Hospital de Balsas',
+      regional: 'Sul',
+      municipio: 'Balsas'
+    });
+    const unit = units[0];
+
+    const orders = DataService.createOrder({
+      hospitalName: unit.nome,
+      clientName: unit.clienteNome,
+      unidadeId: unit.id,
+      regional: unit.regional,
+      municipio: unit.municipio,
+      checklist: []
+    });
+    expect(orders).toHaveLength(1);
+
+    const remainingOrders = await DataService.deleteOrder(orders[0]);
+    expect(remainingOrders).toHaveLength(0);
+    expect(DataService.getUnits()).toHaveLength(1);
+    expect(DataService.getUnits()[0].id).toBe(unit.id);
+
+    await DataService.saveUserProfile({ name: 'Auditor', role: 'auditor' });
+    const escalatedAttempt = await DataService.saveUserProfile({ name: 'Auditor', role: 'admin' });
+    expect(escalatedAttempt.role).toBe('auditor');
   });
 });

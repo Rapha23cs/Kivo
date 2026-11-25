@@ -323,18 +323,22 @@ export const DataService = {
   },
 
   // ---- SESSÃO MULTI-USUÁRIO & PERFIL PERSISTIDO NO SUPABASE AUTH ----
+  clearLocalCaches() {
+    clearOrderSyncSchedulers();
+    ordersMemoryCache = null;
+    profileMemoryCache = null;
+    clientsMemoryCache = null;
+    unitsMemoryCache = null;
+    localStorage.removeItem(LS_ORDERS_KEY);
+    localStorage.removeItem(LS_CLIENTS_KEY);
+    localStorage.removeItem(LS_UNITS_KEY);
+    localStorage.removeItem(LS_PROFILE_KEY);
+  },
+
   async syncSessionUser(user) {
     if (!user) {
-      clearOrderSyncSchedulers();
-      ordersMemoryCache = null;
-      profileMemoryCache = null;
-      clientsMemoryCache = null;
-      unitsMemoryCache = null;
+      this.clearLocalCaches();
       localStorage.removeItem(LS_ACTIVE_UID_KEY);
-      localStorage.removeItem(LS_ORDERS_KEY);
-      localStorage.removeItem(LS_CLIENTS_KEY);
-      localStorage.removeItem(LS_UNITS_KEY);
-      localStorage.removeItem(LS_PROFILE_KEY);
       clearCrossServiceCaches();
       AuditService.clearLocalLogs();
       await OfflineStore.clearAllDataCaches();
@@ -343,15 +347,7 @@ export const DataService = {
 
     const previousUid = localStorage.getItem(LS_ACTIVE_UID_KEY);
     if (previousUid && previousUid !== user.id) {
-      clearOrderSyncSchedulers();
-      ordersMemoryCache = null;
-      profileMemoryCache = null;
-      clientsMemoryCache = null;
-      unitsMemoryCache = null;
-      localStorage.removeItem(LS_ORDERS_KEY);
-      localStorage.removeItem(LS_CLIENTS_KEY);
-      localStorage.removeItem(LS_UNITS_KEY);
-      localStorage.removeItem(LS_PROFILE_KEY);
+      this.clearLocalCaches();
       clearCrossServiceCaches();
       OfflineStore.clearAllDataCaches();
     }
@@ -363,7 +359,23 @@ export const DataService = {
     }
 
     const meta = user.user_metadata || {};
+    let resolvedRole = 'auditor';
+    try {
+      const { data: roleRow } = await client
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (roleRow?.role === 'admin') {
+        resolvedRole = 'admin';
+      }
+    } catch {
+      // fallback caso migration 013 ainda não tenha sido aplicada
+    }
+
     const syncedProfile = {
+      userId: user.id,
+      role: resolvedRole,
       name: meta.full_name || user.email?.split('@')[0] || DEFAULT_USER_PROFILE.name,
       email: user.email || '',
       registry: meta.registry || DEFAULT_USER_PROFILE.registry,
@@ -388,7 +400,13 @@ export const DataService = {
   },
 
   async saveUserProfile(profile) {
-    persistProfileCache(profile);
+    const current = this.getUserProfile();
+    const safeProfile = {
+      ...profile,
+      userId: profile.userId || current?.userId || null,
+      role: current?.role || profile.role || 'auditor'
+    };
+    persistProfileCache(safeProfile);
     await OfflineStore.enqueueProfileUpdate();
 
     if (isSupabaseConfigured() && navigator.onLine !== false) {
@@ -397,15 +415,15 @@ export const DataService = {
         if (client) {
           const { error } = await client.auth.updateUser({
             data: {
-              full_name: profile.name,
-              registry: profile.registry,
-              title: profile.title,
-              specialty: profile.specialty,
-              consultancy_name: profile.consultancyName,
-              phone: profile.phone,
-              avatar_url: profile.avatarUrl || '',
-              signature_url: profile.signatureUrl || '',
-              accent_color: profile.accentColor || 'emerald'
+              full_name: safeProfile.name,
+              registry: safeProfile.registry,
+              title: safeProfile.title,
+              specialty: safeProfile.specialty,
+              consultancy_name: safeProfile.consultancyName,
+              phone: safeProfile.phone,
+              avatar_url: safeProfile.avatarUrl || '',
+              signature_url: safeProfile.signatureUrl || '',
+              accent_color: safeProfile.accentColor || 'emerald'
             }
           });
           if (error) {
@@ -420,7 +438,38 @@ export const DataService = {
         console.warn('Perfil salvo offline e enfileirado para sincronização.');
       }
     }
-    return profile;
+    return safeProfile;
+  },
+
+  async listUserRoles() {
+    if (!isSupabaseConfigured() || navigator.onLine === false) return [];
+    const { client } = getSupabaseClient();
+    if (!client) return [];
+    const { data, error } = await client
+      .from('user_roles')
+      .select('user_id, email, full_name, role, created_at, updated_at')
+      .order('role', { ascending: true })
+      .order('email', { ascending: true });
+    if (error) {
+      throw new Error(error.message);
+    }
+    return data || [];
+  },
+
+  async updateUserRole(targetUserId, nextRole) {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase não configurado.');
+    }
+    const { client } = getSupabaseClient();
+    if (!client) throw new Error('Cliente Supabase indisponível.');
+    const { data, error } = await client.rpc('admin_set_user_role', {
+      p_target_user_id: targetUserId,
+      p_role: nextRole
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+    return data;
   },
 
   // ---- CLIENTES (public.clientes) ----
@@ -608,6 +657,7 @@ export const DataService = {
 
     const record = {
       id: localId,
+      userId: unitData.userId || (existingIdx >= 0 ? list[existingIdx].userId : this.getUserProfile()?.userId || null),
       clienteId: unitData.clienteId || (existingIdx >= 0 ? list[existingIdx].clienteId : null),
       clienteNome,
       codigo: (unitData.codigo || '').trim(),
@@ -667,16 +717,27 @@ export const DataService = {
   },
 
   async deleteUnit(unit) {
-    const nextList = this.getUnits().filter((u) => u.id !== unit.id);
+    if (isSupabaseConfigured() && this.getUserProfile()?.role !== 'admin') {
+      throw new Error('Apenas administradores podem excluir unidades do catálogo comum.');
+    }
+
+    const prevList = this.getUnits();
+    const nextList = prevList.filter((u) => u.id !== unit.id);
     persistUnitsCache(nextList);
     await OfflineStore.enqueueUnitDelete(unit.id);
 
     if (isSupabaseConfigured() && navigator.onLine !== false) {
       try {
-        if (await this.flushPendingUnitDelete(unit.id)) {
+        const flushed = await this.flushPendingUnitDelete(unit.id);
+        if (flushed) {
           return nextList;
         }
       } catch (err) {
+        if (String(err?.message || '').toLowerCase().includes('administradores')) {
+          persistUnitsCache(prevList);
+          await OfflineStore.dequeueUnitDelete(unit.id);
+          throw err;
+        }
         console.warn('Exclusão de unidade aguardando conexão:', err.message);
       }
     }
@@ -701,9 +762,8 @@ export const DataService = {
       }
     }
 
-    const basePayload = {
-      user_id: user.id,
-      cliente_id: clienteId,
+    const sharedFields = {
+      ...(clienteId ? { cliente_id: clienteId } : {}),
       cliente_nome: unitRecord.clienteNome || '',
       codigo: unitRecord.codigo || null,
       nome: unitRecord.nome,
@@ -717,8 +777,8 @@ export const DataService = {
       ativo: true
     };
 
-    const geoPayload = {
-      ...basePayload,
+    const geoFields = {
+      ...sharedFields,
       latitude: unitRecord.latitude ?? null,
       longitude: unitRecord.longitude ?? null,
       geocode_precision: unitRecord.geocodePrecision || null
@@ -733,17 +793,27 @@ export const DataService = {
           .select('id, cliente_id')
           .single();
         if (!res.error && res.data) return res;
-        if (res.error) return res;
+        if (res.error && res.error.code !== 'PGRST116') return res;
       }
 
-      return client
+      const insertPayload = { user_id: user.id, ...rowPayload };
+      let res = await client
         .from('unidades')
-        .upsert(rowPayload, { onConflict: 'user_id,cliente_nome,nome' })
+        .upsert(insertPayload, { onConflict: 'cliente_nome,nome' })
         .select('id, cliente_id')
         .single();
+
+      if (res.error?.code === '42P10') {
+        res = await client
+          .from('unidades')
+          .upsert(insertPayload, { onConflict: 'user_id,cliente_nome,nome' })
+          .select('id, cliente_id')
+          .single();
+      }
+      return res;
     };
 
-    let { data, error } = await persistPayload(geoPayload);
+    let { data, error } = await persistPayload(geoFields);
 
     if (
       error &&
@@ -753,7 +823,7 @@ export const DataService = {
         error.message?.includes('longitude') ||
         error.message?.includes('geocode_precision'))
     ) {
-      const retry = await persistPayload(basePayload);
+      const retry = await persistPayload(sharedFields);
       data = retry.data;
       error = retry.error;
     }
@@ -791,7 +861,13 @@ export const DataService = {
     const { client } = getSupabaseClient();
     if (!client) return false;
     const { error } = await client.from('unidades').delete().eq('id', unitKey);
-    if (error && error.code !== '42P01' && error.code !== 'PGRST205') return false;
+    if (error) {
+      if (error.code === '42501') {
+        await OfflineStore.dequeueUnitDelete(unitKey);
+        throw new Error('Apenas administradores podem excluir unidades do catálogo comum.');
+      }
+      if (error.code !== '42P01' && error.code !== 'PGRST205') return false;
+    }
     await OfflineStore.dequeueUnitDelete(unitKey);
     return true;
   },
@@ -1060,10 +1136,10 @@ export const DataService = {
       try {
         const { client } = getSupabaseClient();
         if (client) {
-          const { error } = await client
-            .from('inspecoes')
-            .delete()
-            .eq('codigo_kivo', order.id);
+          const deleteQuery = isUuid(order.supabaseId)
+            ? client.from('inspecoes').delete().eq('id', order.supabaseId)
+            : client.from('inspecoes').delete().eq('codigo_kivo', order.id);
+          const { error } = await deleteQuery;
           if (!error) {
             await OfflineStore.dequeueOrderDelete(order.id);
             await removeStorageFilesByUrls(mediaUrls);
@@ -1201,6 +1277,7 @@ export const DataService = {
           return {
             id: u.id,
             supabaseId: u.id,
+            userId: u.user_id || null,
             clienteId: u.cliente_id || null,
             clienteNome: u.cliente_nome || '',
             codigo: u.codigo || '',
@@ -1238,6 +1315,7 @@ export const DataService = {
       .from('inspecoes')
       .select(`
         id,
+        user_id,
         codigo_kivo,
         cliente_id,
         cliente_nome,
@@ -1360,6 +1438,7 @@ export const DataService = {
       return {
         id: insp.codigo_kivo,
         supabaseId: insp.id,
+        userId: insp.user_id || null,
         discipline: insp.disciplina || 'meio_ambiente',
         templateId: insp.template_id || '',
         nrModules: Array.isArray(insp.nr_modules) ? insp.nr_modules : null,
@@ -1474,6 +1553,18 @@ export const DataService = {
     const unidadeId = isUuid(order.unidadeId) ? order.unidadeId : null;
 
     const upsertInspecao = async (payload) => {
+      if (isUuid(order.supabaseId)) {
+        const { user_id: _omitUserId, ...updatePayload } = payload;
+        const updateRes = await client
+          .from('inspecoes')
+          .update(updatePayload)
+          .eq('id', order.supabaseId)
+          .select('id')
+          .single();
+        if (!updateRes.error && updateRes.data) return updateRes;
+        if (updateRes.error && updateRes.error.code !== 'PGRST116') return updateRes;
+      }
+
       let result = await client
         .from('inspecoes')
         .upsert(payload, { onConflict: 'user_id,codigo_kivo' })

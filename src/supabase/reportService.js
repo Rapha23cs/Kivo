@@ -618,10 +618,10 @@ export const ReportService = {
       try {
         const { client } = getSupabaseClient();
         if (client) {
-          const { error } = await client
-            .from('relatorios_inspecao')
-            .delete()
-            .eq('codigo_relatorio', report.codigoRelatorio);
+          const deleteQuery = isUuid(report.supabaseId)
+            ? client.from('relatorios_inspecao').delete().eq('id', report.supabaseId)
+            : client.from('relatorios_inspecao').delete().eq('codigo_relatorio', report.codigoRelatorio);
+          const { error } = await deleteQuery;
           if (!error) {
             await OfflineStore.dequeueReportDelete(report.codigoRelatorio);
             await removeStorageFilesByUrls(mediaUrls);
@@ -731,6 +731,7 @@ export const ReportService = {
       return {
         id: row.id,
         supabaseId: row.id,
+        userId: row.user_id || null,
         codigoRelatorio: row.codigo_relatorio,
         clienteNome: row.cliente_nome || '',
         unidade: row.unidade,
@@ -876,6 +877,7 @@ export const ReportService = {
     }
 
     const headerPayload = {
+      ...(isUuid(report.supabaseId) ? { id: report.supabaseId } : {}),
       user_id: user.id,
       cliente_id: clienteId,
       inspecao_id: inspecaoId,

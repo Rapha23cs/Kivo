@@ -70,6 +70,7 @@ export default function UnitsModule({
   reports = [],
   sstItems = [],
   schedules = [],
+  isAdmin = false,
   onSaveUnit,
   onDeleteUnit,
   onSaveClient,
@@ -203,11 +204,14 @@ export default function UnitsModule({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-[#F4F4F5] tracking-tight">
-            Clientes & Unidades Atendidas
+          <h2 className="text-xl font-semibold text-[#F4F4F5] tracking-tight flex items-center gap-2 flex-wrap">
+            <span>Clientes &amp; Unidades Atendidas</span>
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
+              Catálogo comum da equipe
+            </span>
           </h2>
           <p className="text-xs text-[#71717A] mt-0.5">
-            Cadastre hospitais, clínicas e unidades para agilizar novas vistorias, relatórios e acompanhar o histórico por local
+            Unidades cadastradas ficam disponíveis para todos os usuários do Kivo.{!isAdmin ? ' Exclusão de unidades restrita a administradores.' : ''}
           </p>
         </div>
 
@@ -421,29 +425,38 @@ export default function UnitsModule({
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const ok = await confirm({
-                            title: 'Excluir unidade',
-                            message: 'Deseja remover esta unidade do seu catálogo? As vistorias e relatórios já emitidos serão mantidos.',
-                            detail: `${unit.nome}${unit.clienteNome ? ` • ${unit.clienteNome}` : ''}`,
-                            confirmLabel: 'Excluir Unidade',
-                            variant: 'danger'
-                          });
-                          if (ok) {
-                            await onDeleteUnit(unit);
-                            toast.success({
-                              title: 'Unidade removida',
-                              message: unit.nome
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: 'Excluir unidade',
+                              message: 'Deseja remover esta unidade do catálogo comum? As vistorias e relatórios já emitidos serão mantidos.',
+                              detail: `${unit.nome}${unit.clienteNome ? ` • ${unit.clienteNome}` : ''}`,
+                              confirmLabel: 'Excluir Unidade',
+                              variant: 'danger'
                             });
-                          }
-                        }}
-                        className="p-1.5 text-[#71717A] hover:text-[#FB7185] hover:bg-[#221216] rounded-lg transition"
-                        title="Excluir unidade"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                            if (ok) {
+                              try {
+                                await onDeleteUnit(unit);
+                                toast.success({
+                                  title: 'Unidade removida',
+                                  message: unit.nome
+                                });
+                              } catch (err) {
+                                toast.error({
+                                  title: 'Não foi possível excluir a unidade',
+                                  message: err?.message || 'Verifique sua permissão.'
+                                });
+                              }
+                            }
+                          }}
+                          className="p-1.5 text-[#71717A] hover:text-[#FB7185] hover:bg-[#221216] rounded-lg transition"
+                          title="Excluir unidade (Admin)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
