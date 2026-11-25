@@ -248,27 +248,27 @@ export default function ReportsModule({
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Relatórios Criados</span>
-          <span className="text-2xl font-bold font-mono text-[#F4F4F5] mt-1 block">{reports?.length || 0}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs">
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Relatórios Criados</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#F4F4F5] mt-1.5 block">{reports?.length || 0}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Finalizados</span>
-          <span className="text-2xl font-bold font-mono text-[#34D399] mt-1 block">{finalizedCount}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Finalizados</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#34D399] mt-1.5 block">{finalizedCount}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Média de Conformidade</span>
-          <span className="text-2xl font-bold font-mono text-[#F4F4F5] mt-1 block">{avgConformity}%</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Média de Conformidade</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#F4F4F5] mt-1.5 block">{avgConformity}%</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Desvios Mapeados</span>
-          <span className="text-2xl font-bold font-mono text-[#FB7185] mt-1 block">{totalDesvios}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Desvios Mapeados</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#FB7185] mt-1.5 block">{totalDesvios}</span>
         </div>
       </div>
 
       {/* Busca */}
-      <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 flex items-center gap-3">
+      <div className="kivo-card rounded-2xl p-3.5 flex items-center gap-3">
         <Search className="w-4 h-4 text-[#71717A] shrink-0" />
         <input
           type="text"
@@ -277,6 +277,15 @@ export default function ReportsModule({
           placeholder="Buscar relatório por código, cliente, unidade ou cidade..."
           className="w-full bg-transparent text-xs text-[#F4F4F5] placeholder-[#71717A] focus:outline-none"
         />
+        {searchTerm.trim() !== '' && (
+          <button
+            type="button"
+            onClick={() => setSearchTerm('')}
+            className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#221216] text-[#FB7185] border border-[#F43F5E]/30 shrink-0"
+          >
+            Limpar ({filteredReports.length}/{reports?.length || 0})
+          </button>
+        )}
       </div>
 
       {/* Lista de Relatórios */}
@@ -326,7 +335,7 @@ export default function ReportsModule({
             return (
               <div
                 key={rep.codigoRelatorio}
-                className="bg-[#141518] border border-[#232429] hover:border-[#2D2F36] rounded-xl p-5 space-y-4 flex flex-col justify-between transition"
+                className="kivo-card kivo-card-interactive rounded-2xl p-5 space-y-4 flex flex-col justify-between"
               >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">

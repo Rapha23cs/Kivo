@@ -588,7 +588,7 @@ export default function MaranhaoRoutesPlanner({
   return (
     <div className="space-y-4">
       {/* Barra de filtros e presets rápidos */}
-      <div className="bg-[#141518] border border-[#232429] rounded-xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+      <div className="kivo-card rounded-2xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 text-[#34D399] font-semibold mr-1">
             <MapIcon className="w-4 h-4" />
@@ -647,7 +647,7 @@ export default function MaranhaoRoutesPlanner({
       {/* Grid Principal: Mapa Leaflet + Construtor de Roteiro */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         {/* Mapa Interativo do Maranhão */}
-        <div className="xl:col-span-7 bg-[#141518] border border-[#232429] rounded-xl overflow-hidden flex flex-col">
+        <div className="xl:col-span-7 kivo-card rounded-2xl overflow-hidden flex flex-col">
           <div className="px-4 py-2.5 border-b border-[#232429] flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex flex-wrap items-center gap-3">
               {Object.entries(PRIORITY_COLORS).map(([key, cfg]) => (
@@ -703,7 +703,7 @@ export default function MaranhaoRoutesPlanner({
         </div>
 
         {/* Painel do Roteiro */}
-        <div className="xl:col-span-5 bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-4 text-xs">
+        <div className="xl:col-span-5 kivo-card rounded-2xl p-4 sm:p-5 space-y-4 text-xs">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-[#122620] text-[#34D399] rounded-lg border border-[#2EB88A]/30">

@@ -245,14 +245,14 @@ export default function Sidebar({
                 title={isRail ? `${item.label}${item.badge ? ` (${item.badge})` : ''}` : undefined}
                 className={`relative w-full flex items-center ${
                   isRail ? 'justify-center px-2 py-2.5' : 'justify-between px-3 py-2.5 lg:py-2'
-                } rounded-lg text-xs font-medium transition ${
+                } rounded-xl text-xs font-medium transition-all duration-150 ${
                   isActive
-                    ? 'bg-[#1E2025] text-[#F4F4F5] font-semibold border border-[#2EB88A]/35'
+                    ? 'bg-[#122620]/70 text-[#F4F4F5] font-semibold border border-[#2EB88A]/35 shadow-sm'
                     : 'text-[#8E9299] hover:text-[#F4F4F5] hover:bg-[#17181B] border border-transparent'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#34D399]' : 'text-[#71717A]'}`} />
+                  <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-[#34D399]' : 'text-[#71717A]'}`} />
                   {!isRail && <span className="truncate">{item.label}</span>}
                 </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Badge({ children, variant = 'neutral', size = 'md', className = '' }) {
+export default function Badge({ children, variant = 'neutral', size = 'md', dot = false, className = '' }) {
   const variantStyles = {
     neutral: 'bg-[#1A1B20] text-[#A1A1AA] border-[#27282E]',
     primary: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/30',
@@ -11,16 +11,29 @@ export default function Badge({ children, variant = 'neutral', size = 'md', clas
     purple: 'bg-[#1B1926] text-[#A5B4FC] border-[#6366F1]/30',
   };
 
+  const dotColors = {
+    neutral: 'bg-[#71717A]',
+    primary: 'bg-[#34D399]',
+    success: 'bg-[#34D399]',
+    warning: 'bg-[#FBBF24]',
+    danger: 'bg-[#FB7185]',
+    info: 'bg-[#94A3B8]',
+    purple: 'bg-[#A5B4FC]',
+  };
+
   const sizeStyles = {
-    sm: 'text-xs px-2 py-0.5',
-    md: 'text-xs px-2.5 py-1',
-    lg: 'text-sm px-3 py-1.5',
+    sm: 'text-[11px] px-2 py-0.5',
+    md: 'text-xs px-2.5 py-0.5',
+    lg: 'text-xs px-3 py-1',
   };
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${variantStyles[variant] || variantStyles.neutral} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center gap-1.5 font-medium tracking-tight rounded-full border ${variantStyles[variant] || variantStyles.neutral} ${sizeStyles[size]} ${className}`}
     >
+      {dot && (
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColors[variant] || dotColors.neutral}`} />
+      )}
       {children}
     </span>
   );

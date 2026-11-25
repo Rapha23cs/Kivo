@@ -91,6 +91,21 @@ export default function WorkOrderList({
     return matchesSearch && matchesStatus && matchesDiscipline && matchesInspectionType && matchesAuditor;
   });
 
+  const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'all' ||
+    disciplineFilter !== 'all' ||
+    inspectionTypeFilter !== 'all' ||
+    auditorFilter !== 'all';
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDisciplineFilter('all');
+    setInspectionTypeFilter('all');
+    setAuditorFilter('all');
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -149,7 +164,7 @@ export default function WorkOrderList({
       </div>
 
       {/* Filtros */}
-      <div className="bg-[#141518] border border-[#232429] rounded-xl p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
+      <div className="kivo-card rounded-2xl p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#71717A]" />
           <input
@@ -157,12 +172,12 @@ export default function WorkOrderList({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar por código, cliente, unidade, regional ou município..."
-            className="w-full bg-[#0D0E10] border border-[#232429] rounded-lg pl-9 pr-3 py-2 text-[#F4F4F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#34D399] transition"
+            className="w-full bg-[#0D0E10] border border-[#232429] rounded-xl pl-9 pr-3 py-2 text-[#F4F4F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#34D399] transition"
           />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5 bg-[#0D0E10] border border-[#232429] rounded-xl px-2.5 py-1.5">
             <Filter className="w-3.5 h-3.5 text-[#71717A]" />
             <select
               value={statusFilter}
@@ -176,7 +191,7 @@ export default function WorkOrderList({
             </select>
           </div>
 
-          <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
+          <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-xl px-2.5 py-1.5">
             <select
               value={disciplineFilter}
               onChange={(e) => setDisciplineFilter(e.target.value)}
@@ -191,7 +206,7 @@ export default function WorkOrderList({
             </select>
           </div>
 
-          <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
+          <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-xl px-2.5 py-1.5">
             <select
               value={inspectionTypeFilter}
               onChange={(e) => setInspectionTypeFilter(e.target.value)}
@@ -204,7 +219,7 @@ export default function WorkOrderList({
           </div>
 
           {isAdmin && auditorOptions.length > 0 && (
-            <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-lg px-2.5 py-1.5">
+            <div className="flex items-center gap-1 bg-[#0D0E10] border border-[#232429] rounded-xl px-2.5 py-1.5">
               <select
                 value={auditorFilter}
                 onChange={(e) => setAuditorFilter(e.target.value)}
@@ -219,12 +234,22 @@ export default function WorkOrderList({
               </select>
             </div>
           )}
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="px-2.5 py-1.5 rounded-xl bg-[#221216] text-[#FB7185] border border-[#F43F5E]/30 hover:opacity-90 font-medium transition"
+            >
+              Limpar filtros ({filteredOrders.length}/{orders.length})
+            </button>
+          )}
         </div>
       </div>
 
       {/* Lista ou Kanban */}
       {viewMode === 'list' ? (
-        <div className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden">
+        <div className="kivo-card rounded-2xl overflow-hidden">
           {/* Mobile & Portrait Tablet Card List (< md) */}
           <div className="md:hidden divide-y divide-[#1F2024]">
             {filteredOrders.length === 0 ? (
@@ -242,7 +267,22 @@ export default function WorkOrderList({
                 const summary = calculateInspectionSummary(order.checklist || []);
                 const percent = summary.percentualConformidade;
 
-                return (
+                const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'all' ||
+    disciplineFilter !== 'all' ||
+    inspectionTypeFilter !== 'all' ||
+    auditorFilter !== 'all';
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDisciplineFilter('all');
+    setInspectionTypeFilter('all');
+    setAuditorFilter('all');
+  };
+
+  return (
                   <div
                     key={order.id}
                     onClick={() => onOpenOrder(order)}
@@ -368,7 +408,22 @@ export default function WorkOrderList({
                     const summary = calculateInspectionSummary(order.checklist || []);
                     const percent = summary.percentualConformidade;
 
-                    return (
+                    const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'all' ||
+    disciplineFilter !== 'all' ||
+    inspectionTypeFilter !== 'all' ||
+    auditorFilter !== 'all';
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDisciplineFilter('all');
+    setInspectionTypeFilter('all');
+    setAuditorFilter('all');
+  };
+
+  return (
                       <tr
                         key={order.id}
                         className="hover:bg-[#191A1E] transition cursor-pointer group"
@@ -503,7 +558,22 @@ export default function WorkOrderList({
           ].map((col) => {
             const colOrders = filteredOrders.filter((o) => o.status === col.key);
             const isOver = dragOverCol === col.key;
-            return (
+            const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'all' ||
+    disciplineFilter !== 'all' ||
+    inspectionTypeFilter !== 'all' ||
+    auditorFilter !== 'all';
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDisciplineFilter('all');
+    setInspectionTypeFilter('all');
+    setAuditorFilter('all');
+  };
+
+  return (
               <div
                 key={col.key}
                 onDragOver={(e) => {
@@ -540,7 +610,22 @@ export default function WorkOrderList({
                 <div className="space-y-2.5 overflow-y-auto md:max-h-[600px]">
                   {colOrders.map((order) => {
                     const s = calculateInspectionSummary(order.checklist || []);
-                    return (
+                    const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'all' ||
+    disciplineFilter !== 'all' ||
+    inspectionTypeFilter !== 'all' ||
+    auditorFilter !== 'all';
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDisciplineFilter('all');
+    setInspectionTypeFilter('all');
+    setAuditorFilter('all');
+  };
+
+  return (
                       <div
                         key={order.id}
                         draggable={Boolean(onUpdateOrderStatus)}

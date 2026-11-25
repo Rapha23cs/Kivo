@@ -263,7 +263,7 @@ export default function DashboardOverview({
   return (
     <div className="space-y-6">
       {/* Greeting Banner */}
-      <div className="bg-[#141518] border border-[#232429] rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="kivo-card rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             {isAdmin ? (
@@ -492,43 +492,47 @@ export default function DashboardOverview({
 
       {/* KPI Metrics (100% dados reais do Supabase) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 sm:p-5 space-y-2">
+        <div className="kivo-card kivo-card-interactive rounded-2xl p-4 sm:p-5 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider">Vistorias Ativas</span>
-            <ClipboardCheck className="w-4 h-4 text-[#71717A]" />
+            <span className="text-[11px] font-semibold text-[#71717A] uppercase tracking-wider">Vistorias Ativas</span>
+            <div className="w-8 h-8 rounded-xl bg-[#18191D] border border-[#232429] flex items-center justify-center">
+              <ClipboardCheck className="w-4 h-4 text-[#A1A1AA]" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-[#F4F4F5] font-mono">{activeOrdersCount}</span>
-            <span className="text-xs text-[#71717A] font-medium">de {orders.length} totais</span>
+            <span className="text-3xl font-bold text-[#F4F4F5] font-mono kivo-tabular">{activeOrdersCount}</span>
+            <span className="text-xs text-[#71717A] font-medium">de {orders.length}</span>
           </div>
           <p className="text-[11px] text-[#A1A1AA]">{completedOrdersCount} vistoria(s) concluída(s)</p>
         </div>
 
-        <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-2">
+        <div className="kivo-card kivo-card-interactive rounded-2xl p-4 sm:p-5 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider">Desvios em Checklists</span>
-            <AlertOctagon className="w-4 h-4 text-[#FB7185]" />
+            <span className="text-[11px] font-semibold text-[#71717A] uppercase tracking-wider">Desvios em Checklists</span>
+            <div className="w-8 h-8 rounded-xl bg-[#221216] border border-[#F43F5E]/30 flex items-center justify-center">
+              <AlertOctagon className="w-4 h-4 text-[#FB7185]" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-[#FB7185] font-mono">{totalDesvios}</span>
-            <span className="text-xs text-[#71717A] font-medium">itens marcados "Não"</span>
+            <span className="text-3xl font-bold text-[#FB7185] font-mono kivo-tabular">{totalDesvios}</span>
+            <span className="text-xs text-[#71717A] font-medium">itens "Não"</span>
           </div>
           <p className="text-[11px] text-[#A1A1AA]">Tratativa registrada na Regra 6</p>
         </div>
 
-        <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 flex items-center justify-between gap-3">
-          <div className="space-y-1.5 min-w-0">
+        <div className="kivo-card kivo-card-interactive rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-3">
+          <div className="space-y-2 min-w-0">
             <div className="flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5 text-[#2EB88A]" />
-              <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider truncate">
+              <span className="text-[11px] font-semibold text-[#71717A] uppercase tracking-wider truncate">
                 Média Conformidade
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-[#34D399] font-mono">{conformityPercentage}%</span>
-              <span className="text-xs text-[#71717A] font-medium">({totalAvaliados})</span>
+              <span className="text-3xl font-bold text-[#34D399] font-mono kivo-tabular">{conformityPercentage}%</span>
+              <span className="text-xs text-[#71717A] font-medium kivo-tabular">({totalAvaliados})</span>
             </div>
-            <p className="text-[11px] text-[#A1A1AA]">Apuração automática nos checklists</p>
+            <p className="text-[11px] text-[#A1A1AA]">Apuração nos checklists</p>
           </div>
 
           {/* Medidor Circular SVG (Gauge) */}
@@ -553,22 +557,24 @@ export default function DashboardOverview({
                 strokeDasharray={`${Math.min(100, Math.max(0, conformityPercentage)) * 0.974} 100`}
               />
             </svg>
-            <span className="absolute font-mono text-[10px] font-bold text-[#F4F4F5]">
+            <span className="absolute font-mono text-[10px] font-bold text-[#F4F4F5] kivo-tabular">
               {conformityPercentage}%
             </span>
           </div>
         </div>
 
-        <div className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-2">
+        <div className="kivo-card kivo-card-interactive rounded-2xl p-4 sm:p-5 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#71717A] uppercase tracking-wider">Relatórios Técnicos</span>
-            <FileText className="w-4 h-4 text-[#71717A]" />
+            <span className="text-[11px] font-semibold text-[#71717A] uppercase tracking-wider">Relatórios Técnicos</span>
+            <div className="w-8 h-8 rounded-xl bg-[#122620] border border-[#2EB88A]/30 flex items-center justify-center">
+              <FileText className="w-4 h-4 text-[#34D399]" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-[#F4F4F5] font-mono">{reports.length}</span>
+            <span className="text-3xl font-bold text-[#F4F4F5] font-mono kivo-tabular">{reports.length}</span>
             <span className="text-xs text-[#71717A] font-medium">{finalizedReports} finalizado(s)</span>
           </div>
-          <p className="text-[11px] text-[#A1A1AA]">Com registros fotográficos e aderência</p>
+          <p className="text-[11px] text-[#A1A1AA]">Com registros e aderência</p>
         </div>
       </div>
 

@@ -234,27 +234,27 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Em Aberto</span>
-          <span className="text-2xl font-bold font-mono text-[#FB7185] mt-1 block">{counts.open}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs">
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Em Aberto</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#FB7185] mt-1.5 block">{counts.open}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Críticos / Graves Pendentes</span>
-          <span className="text-2xl font-bold font-mono text-[#FBBF24] mt-1 block">{counts.critical}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Críticos / Graves</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#FBBF24] mt-1.5 block">{counts.critical}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Em Andamento</span>
-          <span className="text-2xl font-bold font-mono text-[#E4E4E7] mt-1 block">{counts.progress}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Em Andamento</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#E4E4E7] mt-1.5 block">{counts.progress}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Concluídos (Baixados)</span>
-          <span className="text-2xl font-bold font-mono text-[#34D399] mt-1 block">{counts.done}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Concluídos</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#34D399] mt-1.5 block">{counts.done}</span>
         </div>
       </div>
 
       {/* Filtros */}
-      <div className="bg-[#141518] border border-[#232429] rounded-xl p-3.5 flex flex-col lg:flex-row items-stretch lg:items-center gap-3 text-xs">
+      <div className="kivo-card rounded-2xl p-3.5 flex flex-col lg:flex-row items-stretch lg:items-center gap-3 text-xs">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-2" />
           <input
@@ -262,7 +262,7 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar por unidade, código, requisito, anomalia ou responsável..."
-            className="w-full bg-[#0D0E10] border border-[#232429] rounded-lg pl-9 pr-3 py-1.5 text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#2EB88A]"
+            className="w-full bg-[#0D0E10] border border-[#232429] rounded-xl pl-9 pr-3 py-1.5 text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#2EB88A]"
           />
         </div>
 
@@ -270,7 +270,7 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
+            className="bg-[#0D0E10] border border-[#232429] rounded-xl px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
           >
             <option value="PENDENTES">Apenas Pendentes</option>
             <option value="ALL">Todos os Status</option>
@@ -282,7 +282,7 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
           <select
             value={disciplineFilter}
             onChange={(e) => setDisciplineFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
+            className="bg-[#0D0E10] border border-[#232429] rounded-xl px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
           >
             <option value="ALL">Todos os Fluxos</option>
             {WORK_DISCIPLINES.map((d) => (
@@ -293,7 +293,7 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
           <select
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value)}
-            className="bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
+            className="bg-[#0D0E10] border border-[#232429] rounded-xl px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
           >
             <option value="ALL">Todas Severidades</option>
             <option value="Crítico">Crítico</option>
@@ -301,6 +301,22 @@ export default function ActionPlansModule({ orders = [], onUpdateOrder, onOpenOr
             <option value="Médio">Médio</option>
             <option value="Leve">Leve</option>
           </select>
+
+          {(searchTerm.trim() !== '' || statusFilter !== 'PENDENTES' || disciplineFilter !== 'ALL' || severityFilter !== 'ALL' || riskCellFilter) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('PENDENTES');
+                setDisciplineFilter('ALL');
+                setSeverityFilter('ALL');
+                setRiskCellFilter(null);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-[#221216] text-[#FB7185] border border-[#F43F5E]/30 hover:opacity-90 font-medium transition"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 

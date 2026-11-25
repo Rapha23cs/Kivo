@@ -246,22 +246,22 @@ export default function UnitsModule({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Clientes Ativos</span>
-          <span className="text-2xl font-bold font-mono text-[#F4F4F5] mt-1 block">{clients.length}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs">
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Clientes Ativos</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#F4F4F5] mt-1.5 block">{clients.length}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Unidades Cadastradas</span>
-          <span className="text-2xl font-bold font-mono text-[#34D399] mt-1 block">{units.length}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Unidades Cadastradas</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#34D399] mt-1.5 block">{units.length}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Vistorias Registradas</span>
-          <span className="text-2xl font-bold font-mono text-[#F4F4F5] mt-1 block">{orders.length}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Vistorias Registradas</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#F4F4F5] mt-1.5 block">{orders.length}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Relatórios Técnicos</span>
-          <span className="text-2xl font-bold font-mono text-[#F4F4F5] mt-1 block">{reports.length}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Relatórios Técnicos</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#F4F4F5] mt-1.5 block">{reports.length}</span>
         </div>
       </div>
 
@@ -338,7 +338,7 @@ export default function UnitsModule({
       ) : (
         <>
           {/* Busca e Filtro */}
-      <div className="bg-[#141518] border border-[#232429] rounded-xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-xs">
+      <div className="kivo-card rounded-2xl p-3.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-xs">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-2" />
           <input
@@ -346,24 +346,36 @@ export default function UnitsModule({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar unidade por nome, código, cliente, regional ou município..."
-            className="w-full bg-[#0D0E10] border border-[#232429] rounded-lg pl-9 pr-3 py-1.5 text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#2EB88A]"
+            className="w-full bg-[#0D0E10] border border-[#232429] rounded-xl pl-9 pr-3 py-1.5 text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#2EB88A]"
           />
         </div>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="bg-[#0D0E10] border border-[#232429] rounded-lg px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
+          className="bg-[#0D0E10] border border-[#232429] rounded-xl px-3 py-1.5 text-[#E4E4E7] focus:outline-none focus:border-[#2EB88A]"
         >
           <option value="ALL">Todos os Tipos</option>
           {UNIT_TYPES.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
         </select>
+        {(searchTerm.trim() !== '' || typeFilter !== 'ALL') && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setTypeFilter('ALL');
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-[#221216] text-[#FB7185] border border-[#F43F5E]/30 hover:opacity-90 font-medium transition shrink-0"
+          >
+            Limpar ({filteredUnits.length}/{units.length})
+          </button>
+        )}
       </div>
 
       {/* Lista de Unidades */}
       {filteredUnits.length === 0 ? (
-        <div className="bg-[#141518] border border-[#232429] rounded-xl p-10 text-center space-y-3">
+        <div className="kivo-card rounded-2xl p-10 text-center space-y-3">
           <Building2 className="w-10 h-10 text-[#71717A] mx-auto" />
           <h3 className="text-sm font-semibold text-[#F4F4F5]">Nenhuma unidade cadastrada ainda</h3>
           <p className="text-xs text-[#71717A] max-w-md mx-auto">
@@ -404,7 +416,7 @@ export default function UnitsModule({
             return (
               <div
                 key={unit.id}
-                className="bg-[#141518] border border-[#232429] hover:border-[#2D2F36] rounded-xl p-5 space-y-4 flex flex-col justify-between transition"
+                className="kivo-card kivo-card-interactive rounded-2xl p-5 space-y-4 flex flex-col justify-between"
               >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">

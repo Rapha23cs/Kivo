@@ -68,21 +68,21 @@ export default function Header({
   }, [alertsOpen]);
 
   return (
-    <header className="no-print h-14 sm:h-16 border-b border-[#1F2024] bg-[#0D0E10]/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-30 shrink-0">
+    <header className="no-print h-14 sm:h-16 border-b border-[#1F2024] bg-[#0D0E10]/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-30 shrink-0">
       {/* Menu mobile/tablet + Filtro por Cliente */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         {onOpenMenu && (
           <button
             type="button"
             onClick={onOpenMenu}
-            className="lg:hidden p-2 -ml-1 text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1D22] rounded-lg transition shrink-0"
+            className="lg:hidden p-2 -ml-1 text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1D22] rounded-xl transition shrink-0"
             aria-label="Abrir menu"
           >
             <Menu className="w-5 h-5" />
           </button>
         )}
 
-        <div className="flex items-center gap-2 bg-[#141518] border border-[#232429] rounded-lg px-2.5 sm:px-3 py-1.5 text-xs text-[#E4E4E7] min-w-0 max-w-full">
+        <div className="flex items-center gap-2 bg-[#141518] border border-[#232429] rounded-xl px-2.5 sm:px-3 py-1.5 text-xs text-[#E4E4E7] min-w-0 max-w-full">
           {selectedClientObj?.logoUrl ? (
             <img
               src={sanitizeMediaUrl(selectedClientObj.logoUrl)}
@@ -95,6 +95,7 @@ export default function Header({
           <select
             value={selectedClient}
             onChange={(e) => onSelectClient(e.target.value)}
+            aria-label="Filtrar por cliente"
             className="bg-transparent text-[#F4F4F5] font-medium focus:outline-none cursor-pointer w-[120px] sm:w-auto sm:max-w-[260px] truncate"
           >
             <option value="all" className="bg-[#141518] text-[#F4F4F5]">Todos os Clientes</option>
@@ -110,12 +111,12 @@ export default function Header({
           <button
             type="button"
             onClick={onOpenCommandPalette}
-            className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-[#141518] hover:bg-[#1C1D22] border border-[#232429] rounded-lg text-xs text-[#71717A] hover:text-[#F4F4F5] transition shrink-0"
+            className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-[#141518] hover:bg-[#1C1D22] border border-[#232429] rounded-xl text-xs text-[#71717A] hover:text-[#F4F4F5] transition shrink-0"
             title="Busca rápida global (Ctrl + K)"
           >
             <Search className="w-3.5 h-3.5 text-[#34D399]" />
-            <span className="hidden md:inline">Buscar...</span>
-            <kbd className="hidden lg:inline font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#0D0E10] border border-[#27282E] text-[#A1A1AA]">
+            <span className="hidden md:inline pr-3">Buscar no sistema...</span>
+            <kbd className="hidden lg:inline font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-[#0D0E10] border border-[#27282E] text-[#A1A1AA]">
               Ctrl K
             </kbd>
           </button>
@@ -216,7 +217,7 @@ export default function Header({
           </button>
 
           {alertsOpen && (
-            <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-[#141518] border border-[#2D2F36] rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in">
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-[#141518] border border-[#2D2F36] rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in">
               <div className="px-4 py-3 border-b border-[#232429] flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-semibold text-[#F4F4F5]">Central de Alertas</h4>

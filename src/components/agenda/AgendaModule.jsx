@@ -181,22 +181,22 @@ export default function AgendaModule({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Programações Ativas</span>
-          <span className="text-2xl font-bold font-mono text-[#F4F4F5] mt-1 block">{stats.totalActive}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs">
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Programações Ativas</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#F4F4F5] mt-1.5 block">{stats.totalActive}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Para Hoje / Atrasadas</span>
-          <span className="text-2xl font-bold font-mono text-[#FB7185] mt-1 block">{stats.overdue}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Para Hoje / Atrasadas</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#FB7185] mt-1.5 block">{stats.overdue}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Próximos 7 dias</span>
-          <span className="text-2xl font-bold font-mono text-[#FBBF24] mt-1 block">{stats.next7}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Próximos 7 dias</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#FBBF24] mt-1.5 block">{stats.next7}</span>
         </div>
-        <div className="bg-[#141518] border border-[#232429] p-4 rounded-xl">
-          <span className="text-[#71717A] block">Ciclos Recorrentes</span>
-          <span className="text-2xl font-bold font-mono text-[#34D399] mt-1 block">{stats.recurring}</span>
+        <div className="kivo-card kivo-card-interactive p-4 sm:p-5 rounded-2xl">
+          <span className="text-[#71717A] text-[11px] font-semibold uppercase tracking-wider block">Ciclos Recorrentes</span>
+          <span className="text-2xl font-bold font-mono kivo-tabular text-[#34D399] mt-1.5 block">{stats.recurring}</span>
         </div>
       </div>
 

@@ -26,7 +26,8 @@ import {
   ArrowRightLeft,
   ChevronDown,
   Leaf,
-  HardHat
+  HardHat,
+  Route
 } from 'lucide-react';
 import { getSupabaseClient, isSupabaseConfigured } from '../../supabase/supabaseConfig';
 
@@ -48,7 +49,7 @@ export default function LandingPage({
   const [sentStatus, setSentStatus] = useState(null);
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [previewTab, setPreviewTab] = useState('checklist'); // checklist | sst | portal
+  const [previewTab, setPreviewTab] = useState('checklist'); // checklist | sst | routes | portal
   const [openFaqIdx, setOpenFaqIdx] = useState(0);
 
   const handleSubmitContact = async (e) => {
@@ -192,10 +193,10 @@ export default function LandingPage({
   return (
     <div className="min-h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] font-sans selection:bg-[#2EB88A] selection:text-[#0B0B0D]">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-[#0B0B0D]/90 backdrop-blur-md border-b border-[#1F2024]">
+      <header className="sticky top-0 z-40 bg-[#0B0B0D]/90 backdrop-blur-xl border-b border-[#1F2024]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <a href="#topo" className="flex items-center gap-2.5 shrink-0">
-            <img src="/icon.svg" alt="Logo Kivo" className="w-9 h-9 rounded-xl" />
+          <a href="#topo" className="flex items-center gap-2.5 shrink-0 group">
+            <img src="/icon.svg" alt="Logo Kivo" className="w-9 h-9 rounded-xl shadow-sm transition group-hover:scale-105" />
             <div>
               <span className="font-bold text-base tracking-tight text-[#F4F4F5] block leading-none">
                 KIVO
@@ -206,9 +207,13 @@ export default function LandingPage({
             </div>
           </a>
 
-          <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-[#A1A1AA]">
+          <nav className="hidden md:flex items-center gap-1 text-xs font-medium text-[#A1A1AA]">
             {navLinks.map((lnk) => (
-              <a key={lnk.href} href={lnk.href} className="hover:text-[#F4F4F5] transition">
+              <a
+                key={lnk.href}
+                href={lnk.href}
+                className="px-3 py-1.5 rounded-lg hover:bg-[#141518] hover:text-[#F4F4F5] transition"
+              >
                 {lnk.label}
               </a>
             ))}
@@ -219,7 +224,7 @@ export default function LandingPage({
               <button
                 type="button"
                 onClick={onToggleTheme}
-                className="p-2 rounded-lg bg-[#141518] hover:bg-[#1C1D22] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5] transition"
+                className="p-2 rounded-xl bg-[#141518] hover:bg-[#1C1D22] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5] transition"
                 title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
                 aria-label="Alternar tema"
               >
@@ -234,7 +239,7 @@ export default function LandingPage({
             <button
               type="button"
               onClick={onOpenLogin}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#141518] hover:bg-[#1C1D22] border border-[#27282E] text-xs font-semibold text-[#F4F4F5] transition"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#141518] hover:bg-[#1C1D22] border border-[#27282E] text-xs font-semibold text-[#F4F4F5] transition"
             >
               <LogIn className="w-3.5 h-3.5 text-[#34D399]" />
               <span>Entrar</span>
@@ -242,7 +247,7 @@ export default function LandingPage({
             <button
               type="button"
               onClick={onOpenSignup}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#2EB88A] hover:bg-[#34D399] text-xs font-semibold text-[#09090B] transition"
+              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2EB88A] hover:bg-[#34D399] text-xs font-semibold text-[#09090B] transition shadow-sm shadow-[#2EB88A]/20"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>Criar Conta</span>
@@ -251,8 +256,9 @@ export default function LandingPage({
             <button
               type="button"
               onClick={() => setMobileNavOpen((v) => !v)}
-              className="md:hidden p-2 rounded-lg bg-[#141518] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5]"
+              className="md:hidden p-2 rounded-xl bg-[#141518] border border-[#27282E] text-[#A1A1AA] hover:text-[#F4F4F5]"
               aria-label="Abrir navegação"
+              aria-expanded={mobileNavOpen}
             >
               {mobileNavOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
             </button>
@@ -280,7 +286,7 @@ export default function LandingPage({
                 setMobileNavOpen(false);
                 onOpenSignup();
               }}
-              className="w-full py-2 rounded-lg bg-[#2EB88A] text-[#09090B] font-semibold text-xs flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 rounded-xl bg-[#2EB88A] text-[#09090B] font-semibold text-xs flex items-center justify-center gap-1.5"
             >
               <UserPlus className="w-3.5 h-3.5" />
               Criar Conta Gratuita
@@ -295,35 +301,28 @@ export default function LandingPage({
           className="pointer-events-none absolute -top-36 left-1/2 -translate-x-1/2 w-[780px] h-[420px] rounded-full opacity-20 blur-3xl"
           style={{ background: 'radial-gradient(circle, #2EB88A 0%, transparent 70%)' }}
         />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: 'radial-gradient(#F4F4F5 1px, transparent 1px)',
-            backgroundSize: '28px 28px'
-          }}
-        />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-22 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           <div className="lg:col-span-6 space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#122620] border border-[#2EB88A]/35 text-[#34D399] text-xs font-medium">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#122620] border border-[#2EB88A]/35 text-[#34D399] text-xs font-medium">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Meio Ambiente &amp; Segurança do Trabalho (SST)</span>
+              <span>Meio Ambiente, SST &amp; Roteirização em Campo</span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-[44px] font-extrabold tracking-tight text-[#F4F4F5] leading-[1.12]">
+            <h1 className="text-3xl sm:text-4xl lg:text-[46px] font-extrabold tracking-tight text-[#F4F4F5] leading-[1.08]">
               Da vistoria em campo ao{' '}
               <span className="text-[#34D399]">laudo técnico validado</span>, mesmo sem internet.
             </h1>
 
             <p className="text-sm sm:text-base text-[#A1A1AA] leading-relaxed max-w-xl">
-              Padronize auditorias ambientais e de SST em uma plataforma única: execute checklists offline no celular, gerencie planos 5W2H com Antes × Depois e publique laudos em PDF com QR Code e PIN.
+              Padronize auditorias ambientais e de SST em uma plataforma única: execute checklists offline no celular, planeje rotas de unidades no Maranhão, gerencie planos 5W2H e publique laudos A4 com QR Code e PIN.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <button
                 type="button"
                 onClick={onOpenLogin}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-bold text-sm transition shadow-lg shadow-[#2EB88A]/15"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#2EB88A] hover:bg-[#34D399] text-[#09090B] font-bold text-sm transition shadow-lg shadow-[#2EB88A]/20"
               >
                 <span>Acessar Plataforma</span>
                 <ArrowRight className="w-4 h-4" />
@@ -336,15 +335,15 @@ export default function LandingPage({
               </a>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 text-[11px]">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-[11px]">
               {[
                 { val: '63 + 7 NRs', label: 'Checklists Prontos' },
                 { val: 'Offline', label: 'IndexedDB + PWA' },
-                { val: 'Matriz 5×5', label: 'Risco & 5W2H' },
+                { val: 'Rotas MA', label: 'Mapa & Otimização' },
                 { val: 'PDF + QR', label: 'Portal com PIN' }
               ].map((stat) => (
-                <div key={stat.val} className="bg-[#141518] border border-[#232429] rounded-xl px-3 py-2.5">
-                  <span className="font-mono font-bold text-[#34D399] block text-xs">{stat.val}</span>
+                <div key={stat.val} className="kivo-card rounded-2xl px-3.5 py-3">
+                  <span className="font-mono font-bold text-[#34D399] block text-xs kivo-tabular">{stat.val}</span>
                   <span className="text-[#71717A] text-[10px] block mt-0.5">{stat.label}</span>
                 </div>
               ))}
@@ -353,36 +352,37 @@ export default function LandingPage({
 
           {/* Interactive SaaS App Preview */}
           <div className="lg:col-span-6">
-            <div className="bg-[#111214] border border-[#27282E] rounded-2xl shadow-2xl overflow-hidden">
+            <div className="kivo-card rounded-2xl overflow-hidden shadow-2xl">
               {/* Mock Window Bar */}
               <div className="px-4 py-3 bg-[#141518] border-b border-[#232429] flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E]/70" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]/70" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#2EB88A]/80" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E]/75" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]/75" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2EB88A]/85" />
                   <span className="ml-2 font-mono text-[10px] text-[#71717A]">kivo.app/painel</span>
                 </div>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />
                   Nuvem &amp; Offline Ready
                 </span>
               </div>
 
-              {/* Interactive Tabs */}
-              <div className="px-4 pt-3 bg-[#0D0E10] border-b border-[#1F2024] flex items-center gap-1.5 overflow-x-auto text-[11px]">
+              {/* Interactive Pill Tabs */}
+              <div className="px-4 pt-3 pb-2 bg-[#111214] border-b border-[#1F2024] flex items-center gap-1.5 overflow-x-auto text-[11px]">
                 {[
-                  { id: 'checklist', label: 'Checklist em Campo' },
+                  { id: 'checklist', label: 'Checklist' },
                   { id: 'sst', label: 'SST & Matriz 5×5' },
+                  { id: 'routes', label: 'Rotas MA' },
                   { id: 'portal', label: 'Laudo PDF & QR' }
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setPreviewTab(tab.id)}
-                    className={`px-3 py-2 border-b-2 font-medium whitespace-nowrap transition ${
+                    className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition ${
                       previewTab === tab.id
-                        ? 'border-[#2EB88A] text-[#34D399] font-semibold'
-                        : 'border-transparent text-[#71717A] hover:text-[#F4F4F5]'
+                        ? 'bg-[#122620] text-[#34D399] border border-[#2EB88A]/35 font-semibold'
+                        : 'text-[#71717A] hover:text-[#F4F4F5] hover:bg-[#141518]'
                     }`}
                   >
                     {tab.label}
@@ -391,7 +391,7 @@ export default function LandingPage({
               </div>
 
               {/* Tab Content */}
-              <div className="p-5 space-y-4 min-h-[270px]">
+              <div className="p-5 space-y-4 min-h-[280px] bg-[#111214]">
                 {previewTab === 'checklist' && (
                   <div className="space-y-3.5 animate-fade-in">
                     <div className="flex items-center justify-between gap-2">
@@ -483,6 +483,38 @@ export default function LandingPage({
                   </div>
                 )}
 
+                {previewTab === 'routes' && (
+                  <div className="space-y-3.5 animate-fade-in">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-[#F4F4F5] flex items-center gap-1.5">
+                        <Route className="w-4 h-4 text-[#34D399]" />
+                        Roteiro Otimizado • Maranhão (MA)
+                      </span>
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-[#122620] text-[#34D399] border border-[#2EB88A]/30">
+                        368 km • ~5h 10min
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      {[
+                        { num: 1, nome: 'Hospital Regional • São Luís', meta: 'Partida • GPS exato' },
+                        { num: 2, nome: 'UPA Rosário', meta: '+58 km • Agenda próxima' },
+                        { num: 3, nome: 'Hospital Macrorregional • Caxias', meta: '+310 km • 2 desvios críticos' }
+                      ].map((stop) => (
+                        <div key={stop.num} className="bg-[#141518] border border-[#232429] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <span className="w-6 h-6 rounded-full bg-[#2EB88A] text-[#09090B] font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
+                            {stop.num}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-medium text-[#F4F4F5] truncate">{stop.nome}</p>
+                            <p className="text-[10px] text-[#71717A] truncate">{stop.meta}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {previewTab === 'portal' && (
                   <div className="space-y-3.5 animate-fade-in">
                     <div className="flex items-center justify-between">
@@ -542,7 +574,7 @@ export default function LandingPage({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="bg-[#141518] border border-[#2EB88A]/30 rounded-2xl p-6 space-y-4">
+          <div className="kivo-card kivo-card-interactive border-[#2EB88A]/30 rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <div className="p-2.5 rounded-xl bg-[#122620] text-[#34D399] border border-[#2EB88A]/35">
@@ -564,7 +596,7 @@ export default function LandingPage({
             </ul>
           </div>
 
-          <div className="bg-[#141518] border border-[#F59E0B]/30 rounded-2xl p-6 space-y-4">
+          <div className="kivo-card kivo-card-interactive border-[#F59E0B]/30 rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <div className="p-2.5 rounded-xl bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/35">
@@ -606,7 +638,7 @@ export default function LandingPage({
             return (
               <div
                 key={feat.title}
-                className="bg-[#141518] border border-[#232429] hover:border-[#2EB88A]/45 rounded-2xl p-5 space-y-3 transition"
+                className="kivo-card kivo-card-interactive rounded-2xl p-5 space-y-3"
               >
                 <div className="w-10 h-10 rounded-xl bg-[#122620] border border-[#2EB88A]/30 text-[#34D399] flex items-center justify-center">
                   <Icon className="w-5 h-5" />
@@ -631,7 +663,7 @@ export default function LandingPage({
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {steps.map((step) => (
-              <div key={step.num} className="bg-[#141518] border border-[#232429] rounded-2xl p-6 space-y-3">
+              <div key={step.num} className="kivo-card kivo-card-interactive rounded-2xl p-6 space-y-3">
                 <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-[#122620] text-[#34D399] border border-[#2EB88A]/30 inline-block">
                   PASSO {step.num}
                 </span>
@@ -658,11 +690,12 @@ export default function LandingPage({
             return (
               <div
                 key={item.q}
-                className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden"
+                className="kivo-card rounded-2xl overflow-hidden"
               >
                 <button
                   type="button"
                   onClick={() => setOpenFaqIdx(isOpen ? -1 : idx)}
+                  aria-expanded={isOpen}
                   className="w-full px-5 py-4 flex items-center justify-between gap-4 text-left text-xs sm:text-sm font-semibold text-[#F4F4F5] hover:bg-[#18191D] transition"
                 >
                   <span>{item.q}</span>
@@ -685,7 +718,7 @@ export default function LandingPage({
 
       {/* Contact / Demo Request */}
       <section id="contato" className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start bg-[#141518] border border-[#232429] rounded-2xl p-6 sm:p-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start kivo-card rounded-2xl p-6 sm:p-8">
           <div className="lg:col-span-5 space-y-4">
             <span className="text-xs font-mono uppercase tracking-widest text-[#34D399]">Contato Direto</span>
             <h2 className="text-2xl font-bold text-[#F4F4F5] tracking-tight">

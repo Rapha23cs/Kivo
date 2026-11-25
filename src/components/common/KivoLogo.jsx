@@ -17,7 +17,7 @@ export default function KivoLogo({
       <img
         src="/icon.svg"
         alt="Logo Kivo"
-        className={`${iconSizes[size] || iconSizes.md} shrink-0 shadow-sm`}
+        className={`${iconSizes[size] || iconSizes.md} shrink-0 shadow-sm ring-1 ring-white/10`}
       />
       {showText && (
         <div className="leading-tight">

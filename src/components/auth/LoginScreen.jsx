@@ -400,30 +400,30 @@ export default function LoginScreen({
           </div>
 
           {/* Card resumo minimalista dos dois fluxos */}
-          <div className="bg-[#141518] border border-[#232429] rounded-xl p-4 space-y-3">
+          <div className="kivo-card rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between text-xs border-b border-[#1F2024] pb-2.5">
               <span className="text-[#E4E4E7] font-medium flex items-center gap-2">
                 <ClipboardCheck className="w-4 h-4 text-[#34D399]" />
                 Plataforma Completa de Auditoria
               </span>
-              <span className="font-mono text-[11px] text-[#34D399]">Ambiental &amp; SST</span>
+              <span className="font-mono text-[11px] text-[#34D399]">Ambiental • SST • MA</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2.5 text-center">
-              <div className="bg-[#0D0E10] border border-[#2EB88A]/30 rounded-lg p-2.5">
+              <div className="bg-[#0D0E10] border border-[#2EB88A]/30 rounded-xl p-2.5">
                 <Layers className="w-3.5 h-3.5 text-[#34D399] mx-auto mb-1" />
                 <span className="text-sm font-semibold text-[#F4F4F5] block">Ambiente</span>
                 <span className="text-[10px] text-[#34D399]">63 itens • PGRSS</span>
               </div>
-              <div className="bg-[#0D0E10] border border-[#F59E0B]/30 rounded-lg p-2.5">
+              <div className="bg-[#0D0E10] border border-[#F59E0B]/30 rounded-xl p-2.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#FBBF24] mx-auto mb-1" />
                 <span className="text-sm font-semibold text-[#F4F4F5] block">SST (NRs)</span>
                 <span className="text-[10px] text-[#FBBF24]">Matriz 5×5 + 5W2H</span>
               </div>
-              <div className="bg-[#0D0E10] border border-[#232429] rounded-lg p-2.5">
+              <div className="bg-[#0D0E10] border border-[#232429] rounded-xl p-2.5">
                 <FileCheck2 className="w-3.5 h-3.5 text-[#A1A1AA] mx-auto mb-1" />
-                <span className="text-sm font-semibold text-[#F4F4F5] font-mono block">PDF + QR</span>
-                <span className="text-[10px] text-[#71717A]">Portal com PIN</span>
+                <span className="text-sm font-semibold text-[#F4F4F5] font-mono block">Rotas &amp; PDF</span>
+                <span className="text-[10px] text-[#71717A]">MA + QR com PIN</span>
               </div>
             </div>
           </div>
@@ -480,7 +480,7 @@ export default function LoginScreen({
             <KivoLogo size="md" subtitle="Meio Ambiente & SST" />
           </div>
 
-          <div className="bg-[#141518] border border-[#232429] rounded-2xl p-6 sm:p-7 space-y-6 shadow-2xl">
+          <div className="kivo-card rounded-2xl p-6 sm:p-7 space-y-6 shadow-2xl">
             {/* Seletor de Modo (Entrar | Link Mágico | Criar Conta) */}
             {(mode === 'login' || mode === 'magic' || mode === 'signup') && (
               <div className="grid grid-cols-3 bg-[#0D0E10] p-1 rounded-xl border border-[#232429] text-[11px]">

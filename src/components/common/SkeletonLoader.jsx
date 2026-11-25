@@ -13,7 +13,7 @@ export function ModuleLoadingSkeleton() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[1, 2, 3, 4].map((n) => (
-          <div key={n} className="bg-[#141518] border border-[#232429] rounded-xl p-4 sm:p-5 space-y-3">
+          <div key={n} className="kivo-card rounded-2xl p-4 sm:p-5 space-y-3">
             <div className="h-3 w-24 rounded kivo-skeleton" />
             <div className="h-7 w-16 rounded kivo-skeleton" />
             <div className="h-2.5 w-32 rounded kivo-skeleton" />
@@ -23,9 +23,9 @@ export function ModuleLoadingSkeleton() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[1, 2].map((n) => (
-          <div key={n} className="bg-[#141518] border border-[#232429] rounded-xl p-5 space-y-3">
+          <div key={n} className="kivo-card rounded-2xl p-5 space-y-3">
             <div className="h-4 w-44 rounded kivo-skeleton" />
-            <div className="h-36 rounded-lg kivo-skeleton" />
+            <div className="h-36 rounded-xl kivo-skeleton" />
           </div>
         ))}
       </div>
