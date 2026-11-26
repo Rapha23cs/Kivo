@@ -326,7 +326,7 @@ export default function LoginScreen({
         } else {
           setFeedback({
             type: 'success',
-            text: `Cadastro criado para ${email.trim()}! Confirme o link enviado ao seu e-mail para fazer o primeiro acesso.`
+            text: `Cadastro criado para ${email.trim()}! Confirme o link enviado ao seu e-mail e aguarde a autorização do administrador para acessar o sistema.`
           });
           setPassword('');
           setConfirmPassword('');

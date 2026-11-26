@@ -1134,7 +1134,8 @@ export default function UserProfileModal({
                   </button>
                 </div>
                 <p className="text-[11px] text-[#A1A1AA]">
-                  • <strong>Unidades:</strong> compartilhadas entre todos os usuários; apenas Admins podem excluir unidades.<br />
+                  • <strong>Liberação de acesso:</strong> novos cadastros entram como pendentes e só acessam o sistema após sua autorização.<br />
+                  • <strong>Unidades:</strong> compartilhadas entre usuários autorizados; apenas Admins podem excluir unidades.<br />
                   • <strong>Vistorias e Relatórios:</strong> exclusivos de cada auditor no dia a dia, com acesso administrativo completo para contas Admin.
                 </p>
               </div>
@@ -1152,10 +1153,15 @@ export default function UserProfileModal({
               )}
 
               <div className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-[#1F2024] flex items-center justify-between">
+                <div className="px-4 py-2.5 border-b border-[#1F2024] flex items-center justify-between gap-2">
                   <span className="font-semibold text-[#E4E4E7] text-xs">
                     Usuários cadastrados no Supabase ({adminUsers.length})
                   </span>
+                  {adminUsers.filter((u) => u.access_status === 'pending').length > 0 && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#221A10] text-[#FBBF24] border border-[#F59E0B]/40">
+                      {adminUsers.filter((u) => u.access_status === 'pending').length} pendente(s)
+                    </span>
+                  )}
                 </div>
 
                 {!isOnline ? (
@@ -1173,10 +1179,18 @@ export default function UserProfileModal({
                     {adminUsers.map((u) => {
                       const isSelf = u.user_id === userProfile?.userId;
                       const nextRole = u.role === 'admin' ? 'auditor' : 'admin';
+                      const accessStatus = u.role === 'admin' ? 'approved' : (u.access_status || 'approved');
+                      const accessBadge =
+                        accessStatus === 'pending'
+                          ? { label: 'Aguardando', cls: 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/40' }
+                          : accessStatus === 'blocked'
+                            ? { label: 'Bloqueado', cls: 'bg-[#221216] text-[#FB7185] border-[#F43F5E]/40' }
+                            : { label: 'Autorizado', cls: 'bg-[#122620] text-[#34D399] border-[#2EB88A]/40' };
+
                       return (
-                        <div key={u.user_id} className="px-4 py-3 flex items-center justify-between gap-3">
+                        <div key={u.user_id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-medium text-[#F4F4F5] truncate">
                                 {u.full_name || u.email || 'Usuário'}
                               </span>
@@ -1189,6 +1203,9 @@ export default function UserProfileModal({
                               >
                                 {u.role}
                               </span>
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${accessBadge.cls}`}>
+                                {accessBadge.label}
+                              </span>
                               {isSelf && (
                                 <span className="text-[10px] text-[#34D399]">(Você)</span>
                               )}
@@ -1196,40 +1213,103 @@ export default function UserProfileModal({
                             <span className="text-[11px] text-[#71717A] truncate block">{u.email}</span>
                           </div>
 
-                          <button
-                            type="button"
-                            disabled={adminUpdatingId === u.user_id}
-                            onClick={async () => {
-                              const ok = await confirm({
-                                title: nextRole === 'admin' ? 'Promover para Admin?' : 'Remover acesso Admin?',
-                                message:
-                                  nextRole === 'admin'
-                                    ? `${u.email} passará a poder excluir unidades e visualizar/gerenciar vistorias e relatórios do sistema.`
-                                    : `${u.email} voltará ao perfil Auditor (acesso restrito aos próprios dados e unidades em comum).`,
-                                confirmLabel: nextRole === 'admin' ? 'Promover a Admin' : 'Definir Auditor',
-                                variant: nextRole === 'admin' ? 'warning' : 'danger'
-                              });
-                              if (!ok) return;
-                              setAdminUpdatingId(u.user_id);
-                              setAdminFeedback(null);
-                              try {
-                                await DataService.updateUserRole(u.user_id, nextRole);
-                                await loadAdminUsers();
-                                onRolesChanged?.();
-                                setAdminFeedback({
-                                  type: 'success',
-                                  text: `Papel de ${u.email} atualizado para ${nextRole}.`
+                          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                            {accessStatus !== 'approved' && (
+                              <button
+                                type="button"
+                                disabled={adminUpdatingId === u.user_id}
+                                onClick={async () => {
+                                  setAdminUpdatingId(u.user_id);
+                                  setAdminFeedback(null);
+                                  try {
+                                    await DataService.updateUserAccess(u.user_id, 'approved');
+                                    await loadAdminUsers();
+                                    onRolesChanged?.();
+                                    setAdminFeedback({
+                                      type: 'success',
+                                      text: `Acesso autorizado para ${u.email}.`
+                                    });
+                                  } catch (err) {
+                                    setAdminFeedback({ type: 'error', text: err.message });
+                                  } finally {
+                                    setAdminUpdatingId(null);
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] rounded-lg text-[11px] font-semibold transition shrink-0"
+                              >
+                                Autorizar
+                              </button>
+                            )}
+
+                            {!isSelf && u.role !== 'admin' && accessStatus !== 'blocked' && (
+                              <button
+                                type="button"
+                                disabled={adminUpdatingId === u.user_id}
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: 'Bloquear acesso deste usuário?',
+                                    message: `${u.email} perderá o acesso imediato ao sistema até que você autorize novamente.`,
+                                    confirmLabel: 'Bloquear acesso',
+                                    variant: 'danger'
+                                  });
+                                  if (!ok) return;
+                                  setAdminUpdatingId(u.user_id);
+                                  setAdminFeedback(null);
+                                  try {
+                                    await DataService.updateUserAccess(u.user_id, 'blocked');
+                                    await loadAdminUsers();
+                                    onRolesChanged?.();
+                                    setAdminFeedback({
+                                      type: 'success',
+                                      text: `Acesso de ${u.email} bloqueado.`
+                                    });
+                                  } catch (err) {
+                                    setAdminFeedback({ type: 'error', text: err.message });
+                                  } finally {
+                                    setAdminUpdatingId(null);
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-[#221216] hover:bg-[#2E161B] disabled:opacity-50 text-[#FB7185] border border-[#F43F5E]/40 rounded-lg text-[11px] font-medium transition shrink-0"
+                              >
+                                Bloquear
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={adminUpdatingId === u.user_id}
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: nextRole === 'admin' ? 'Promover para Admin?' : 'Remover acesso Admin?',
+                                  message:
+                                    nextRole === 'admin'
+                                      ? `${u.email} passará a poder excluir unidades, autorizar usuários e visualizar/gerenciar vistorias e relatórios do sistema.`
+                                      : `${u.email} voltará ao perfil Auditor (acesso restrito aos próprios dados e unidades em comum).`,
+                                  confirmLabel: nextRole === 'admin' ? 'Promover a Admin' : 'Definir Auditor',
+                                  variant: nextRole === 'admin' ? 'warning' : 'danger'
                                 });
-                              } catch (err) {
-                                setAdminFeedback({ type: 'error', text: err.message });
-                              } finally {
-                                setAdminUpdatingId(null);
-                              }
-                            }}
-                            className="px-2.5 py-1 bg-[#0D0E10] hover:bg-[#1C1D22] disabled:opacity-50 text-[#E4E4E7] border border-[#27282E] rounded-lg text-[11px] font-medium transition shrink-0"
-                          >
-                            {u.role === 'admin' ? 'Tornar Auditor' : 'Tornar Admin'}
-                          </button>
+                                if (!ok) return;
+                                setAdminUpdatingId(u.user_id);
+                                setAdminFeedback(null);
+                                try {
+                                  await DataService.updateUserRole(u.user_id, nextRole);
+                                  await loadAdminUsers();
+                                  onRolesChanged?.();
+                                  setAdminFeedback({
+                                    type: 'success',
+                                    text: `Papel de ${u.email} atualizado para ${nextRole}.`
+                                  });
+                                } catch (err) {
+                                  setAdminFeedback({ type: 'error', text: err.message });
+                                } finally {
+                                  setAdminUpdatingId(null);
+                                }
+                              }}
+                              className="px-2.5 py-1 bg-[#0D0E10] hover:bg-[#1C1D22] disabled:opacity-50 text-[#E4E4E7] border border-[#27282E] rounded-lg text-[11px] font-medium transition shrink-0"
+                            >
+                              {u.role === 'admin' ? 'Tornar Auditor' : 'Tornar Admin'}
+                            </button>
+                          </div>
                         </div>
                       );
                     })}

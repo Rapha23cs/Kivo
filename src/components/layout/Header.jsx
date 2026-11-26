@@ -26,6 +26,7 @@ export default function Header({
   onSelectClient,
   onOpenNewOrder,
   onOpenAdminPanel,
+  pendingUsersCount = 0,
   onOpenProfile,
   onOpenMenu,
   onOpenCommandPalette,
@@ -303,6 +304,11 @@ export default function Header({
             <ShieldCheck className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Gestão Admin</span>
             <span className="sm:hidden">Admin</span>
+            {pendingUsersCount > 0 && (
+              <span className="font-mono text-[10px] px-1.5 py-0.2 rounded-full bg-[#F59E0B] text-[#080A09] font-bold">
+                {pendingUsersCount}
+              </span>
+            )}
           </button>
         ) : (
           <button

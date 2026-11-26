@@ -354,33 +354,53 @@ export const DataService = {
     localStorage.setItem(LS_ACTIVE_UID_KEY, user.id);
 
     let resolvedRole = 'auditor';
+    let resolvedAccessStatus = 'approved'; // fallback caso migration 015 ainda não tenha sido aplicada
     try {
       const { client } = getSupabaseClient();
       if (client && navigator.onLine !== false) {
-        const { data: roleRow } = await client
+        const { data: roleRow, error: roleErr } = await client
           .from('user_roles')
-          .select('role')
+          .select('role, access_status')
           .eq('user_id', user.id)
           .maybeSingle();
-        if (roleRow?.role === 'admin') {
-          resolvedRole = 'admin';
+
+        if (!roleErr) {
+          if (roleRow?.role === 'admin') {
+            resolvedRole = 'admin';
+            resolvedAccessStatus = 'approved';
+          } else if (roleRow) {
+            resolvedAccessStatus = roleRow.access_status || 'pending';
+          } else {
+            resolvedAccessStatus = 'pending';
+          }
+        } else {
+          const { data: legacyRow } = await client
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (legacyRow?.role === 'admin') {
+            resolvedRole = 'admin';
+          }
         }
       } else {
         const cached = safeLocalStorageGet(LS_PROFILE_KEY, null);
-        if (cached?.userId === user.id && cached?.role === 'admin') {
-          resolvedRole = 'admin';
+        if (cached?.userId === user.id) {
+          if (cached.role === 'admin') resolvedRole = 'admin';
+          if (cached.accessStatus) resolvedAccessStatus = cached.accessStatus;
         }
       }
     } catch {
-      // fallback caso migration 013 ainda não tenha sido aplicada
+      // fallback caso migration 013/015 ainda não tenha sido aplicada
     }
 
     const pending = OfflineStore.getPendingIndex();
-    if (pending.updateProfile) {
+    if (pending.updateProfile && resolvedAccessStatus === 'approved') {
       const cachedProfile = {
         ...this.getUserProfile(),
         userId: user.id,
-        role: resolvedRole
+        role: resolvedRole,
+        accessStatus: resolvedAccessStatus
       };
       persistProfileCache(cachedProfile);
       return cachedProfile;
@@ -391,6 +411,7 @@ export const DataService = {
     const syncedProfile = {
       userId: user.id,
       role: resolvedRole,
+      accessStatus: resolvedAccessStatus,
       name: meta.full_name || user.email?.split('@')[0] || DEFAULT_USER_PROFILE.name,
       email: user.email || '',
       registry: meta.registry || DEFAULT_USER_PROFILE.registry,
@@ -419,7 +440,8 @@ export const DataService = {
     const safeProfile = {
       ...profile,
       userId: profile.userId || current?.userId || null,
-      role: current?.role || profile.role || 'auditor'
+      role: current?.role || profile.role || 'auditor',
+      accessStatus: current?.accessStatus || profile.accessStatus || 'approved'
     };
     persistProfileCache(safeProfile);
     await OfflineStore.enqueueProfileUpdate();
@@ -460,15 +482,33 @@ export const DataService = {
     if (!isSupabaseConfigured() || navigator.onLine === false) return [];
     const { client } = getSupabaseClient();
     if (!client) return [];
+
     const { data, error } = await client
+      .from('user_roles')
+      .select('user_id, email, full_name, role, access_status, approved_at, created_at, updated_at')
+      .order('created_at', { ascending: false });
+
+    if (!error) {
+      const rank = { pending: 0, approved: 1, blocked: 2 };
+      return [...(data || [])].sort((a, b) => {
+        const ra = rank[a.access_status || 'approved'] ?? 1;
+        const rb = rank[b.access_status || 'approved'] ?? 1;
+        if (ra !== rb) return ra - rb;
+        if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
+        return (a.email || '').localeCompare(b.email || '');
+      });
+    }
+
+    // Fallback caso migration 015 ainda não tenha sido aplicada
+    const { data: legacyData, error: legacyErr } = await client
       .from('user_roles')
       .select('user_id, email, full_name, role, created_at, updated_at')
       .order('role', { ascending: true })
       .order('email', { ascending: true });
-    if (error) {
-      throw new Error(error.message);
+    if (legacyErr) {
+      throw new Error(legacyErr.message);
     }
-    return data || [];
+    return (legacyData || []).map((row) => ({ ...row, access_status: 'approved' }));
   },
 
   async updateUserRole(targetUserId, nextRole) {
@@ -480,6 +520,22 @@ export const DataService = {
     const { data, error } = await client.rpc('admin_set_user_role', {
       p_target_user_id: targetUserId,
       p_role: nextRole
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+    return data;
+  },
+
+  async updateUserAccess(targetUserId, nextStatus) {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase não configurado.');
+    }
+    const { client } = getSupabaseClient();
+    if (!client) throw new Error('Cliente Supabase indisponível.');
+    const { data, error } = await client.rpc('admin_set_user_access', {
+      p_target_user_id: targetUserId,
+      p_status: nextStatus
     });
     if (error) {
       throw new Error(error.message);

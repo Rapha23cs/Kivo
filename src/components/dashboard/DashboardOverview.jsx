@@ -214,6 +214,7 @@ export default function DashboardOverview({
           name: meta.name || meta.email || 'Auditor',
           email: meta.email || '',
           role: meta.role || 'auditor',
+          accessStatus: meta.accessStatus || 'approved',
           ordersCount: 0,
           reportsCount: 0,
           totalConf: 0,
@@ -228,7 +229,8 @@ export default function DashboardOverview({
         userId: u.user_id,
         name: u.full_name || u.email?.split('@')[0] || 'Usuário',
         email: u.email,
-        role: u.role
+        role: u.role,
+        accessStatus: u.access_status || 'approved'
       });
     });
 
@@ -339,6 +341,11 @@ export default function DashboardOverview({
                 </h2>
                 <p className="text-[11px] text-[#71717A]">
                   {adminUsers.length} conta(s) registrada(s) • {adminUsers.filter((u) => u.role === 'auditor').length} auditor(es) e {adminUsers.filter((u) => u.role === 'admin').length} admin(s)
+                  {adminUsers.filter((u) => u.access_status === 'pending').length > 0 && (
+                    <span className="text-[#FBBF24] font-semibold">
+                      {' '}• {adminUsers.filter((u) => u.access_status === 'pending').length} aguardando autorização
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -347,9 +354,24 @@ export default function DashboardOverview({
               onClick={onOpenAdminPanel || onOpenProfile}
               className="text-xs font-medium text-[#FBBF24] hover:underline flex items-center gap-1 self-start sm:self-center"
             >
-              Gerenciar papéis <ArrowRight className="w-3.5 h-3.5" />
+              Gerenciar papéis e acessos <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {adminUsers.some((u) => u.access_status === 'pending') && (
+            <div className="bg-[#221A10] border border-[#F59E0B]/40 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <span className="text-[#FBBF24] font-medium">
+                Há {adminUsers.filter((u) => u.access_status === 'pending').length} novo(s) usuário(s) aguardando sua autorização para acessar o sistema.
+              </span>
+              <button
+                type="button"
+                onClick={onOpenAdminPanel || onOpenProfile}
+                className="px-3 py-1.5 rounded-lg bg-[#F59E0B] hover:bg-[#FBBF24] text-[#080A09] font-bold text-[11px] transition shrink-0 self-start sm:self-auto"
+              >
+                Autorizar usuários
+              </button>
+            </div>
+          )}
 
           {auditorSummaries.length === 0 ? (
             <p className="text-xs text-[#71717A] py-3">
@@ -365,7 +387,7 @@ export default function DashboardOverview({
                     className="bg-[#0E0F12] border border-[#232429] rounded-lg p-3.5 flex items-center justify-between gap-3"
                   >
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-[#F4F4F5] truncate">{aud.name}</span>
                         <span
                           className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${
@@ -376,6 +398,16 @@ export default function DashboardOverview({
                         >
                           {aud.role}
                         </span>
+                        {aud.accessStatus === 'pending' && (
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/40 shrink-0">
+                            Pendente
+                          </span>
+                        )}
+                        {aud.accessStatus === 'blocked' && (
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border bg-[#221216] text-[#FB7185] border-[#F43F5E]/40 shrink-0">
+                            Bloqueado
+                          </span>
+                        )}
                       </div>
                       {aud.email && (
                         <p className="text-[11px] text-[#71717A] truncate">{aud.email}</p>

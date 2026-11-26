@@ -23,6 +23,7 @@ const WorkOrderDetailModal = lazy(() => import('./components/workOrders/WorkOrde
 const NewWorkOrderModal = lazy(() => import('./components/workOrders/NewWorkOrderModal'));
 const UserProfileModal = lazy(() => import('./components/profile/UserProfileModal'));
 const LoginScreen = lazy(() => import('./components/auth/LoginScreen'));
+const PendingApprovalScreen = lazy(() => import('./components/auth/PendingApprovalScreen'));
 const ReportsModule = lazy(() => import('./components/reports/ReportsModule'));
 const UnitsModule = lazy(() => import('./components/units/UnitsModule'));
 const CommandPaletteModal = lazy(() => import('./components/common/CommandPaletteModal'));
@@ -349,6 +350,38 @@ export default function App() {
   };
 
   const loadAllData = async () => {
+    if (supabaseEnabled && session?.user) {
+      let currentProfile = null;
+      try {
+        currentProfile = await DataService.syncSessionUser(session.user);
+      } catch (err) {
+        console.warn('Falha ao atualizar perfil/papel no Supabase:', err.message);
+      }
+      if (currentProfile) {
+        setUserProfile(currentProfile);
+        if (currentProfile.role !== 'admin' && currentProfile.accessStatus && currentProfile.accessStatus !== 'approved') {
+          DataService.clearLocalCaches();
+          ReportService.clearLocalCache();
+          OperationsService.clearLocalCaches();
+          await OfflineStore.clearAllDataCaches();
+          setOrders([]);
+          setReports([]);
+          setClients([]);
+          setUnits([]);
+          setTemplates([]);
+          setSchedules([]);
+          setSstItems([]);
+          setAdminUsers([]);
+          return;
+        }
+        if (currentProfile.role === 'admin' && navigator.onLine !== false) {
+          DataService.listUserRoles().then(setAdminUsers).catch(() => {});
+        } else {
+          setAdminUsers([]);
+        }
+      }
+    }
+
     await Promise.all([
       DataService.hydrateFromIndexedDb(),
       ReportService.hydrateFromIndexedDb()
@@ -366,22 +399,6 @@ export default function App() {
     if (supabaseEnabled && navigator.onLine !== false) {
       if (OfflineStore.getPendingCount() > 0) {
         await handleSyncNow();
-      }
-
-      if (session?.user) {
-        try {
-          const freshProfile = await DataService.syncSessionUser(session.user);
-          if (freshProfile) {
-            setUserProfile(freshProfile);
-            if (freshProfile.role === 'admin') {
-              DataService.listUserRoles().then(setAdminUsers).catch(() => {});
-            } else {
-              setAdminUsers([]);
-            }
-          }
-        } catch (err) {
-          console.warn('Falha ao atualizar perfil/papel no Supabase:', err.message);
-        }
       }
 
       try {
@@ -1055,9 +1072,10 @@ export default function App() {
             theme={theme}
             onToggleTheme={toggleTheme}
             onBackToLanding={() => navigatePublicAuth(null)}
-            onLoginSuccess={(nextSession) => {
+            onLoginSuccess={async (nextSession) => {
               if (nextSession?.user) {
-                DataService.syncSessionUser(nextSession.user);
+                const synced = await DataService.syncSessionUser(nextSession.user);
+                if (synced) setUserProfile(synced);
               }
               setMfaRequired(false);
               setSession(nextSession);
@@ -1092,6 +1110,45 @@ export default function App() {
           />
         )}
         <PwaInstallBanner />
+      </Suspense>
+    );
+  }
+
+  const isAccessBlocked =
+    supabaseEnabled &&
+    session &&
+    userProfile &&
+    userProfile.role !== 'admin' &&
+    userProfile.accessStatus &&
+    userProfile.accessStatus !== 'approved';
+
+  if (isAccessBlocked) {
+    return (
+      <Suspense fallback={<AppLoadingSkeleton />}>
+        <PendingApprovalScreen
+          userProfile={userProfile}
+          email={session?.user?.email}
+          accessStatus={userProfile.accessStatus}
+          isOnline={isOnline}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onCheckStatus={async () => {
+            if (!session?.user) return null;
+            const fresh = await DataService.syncSessionUser(session.user);
+            if (fresh) {
+              setUserProfile(fresh);
+              if (fresh.role === 'admin' || fresh.accessStatus === 'approved') {
+                await loadAllData();
+                toast.success({
+                  title: 'Acesso liberado',
+                  message: 'Seu acesso ao Kivo foi autorizado pelo administrador.'
+                });
+              }
+            }
+            return fresh;
+          }}
+          onSignOut={handleSignOut}
+        />
       </Suspense>
     );
   }
@@ -1211,6 +1268,9 @@ export default function App() {
       : sstItems.filter((x) => !x.clienteNome || x.clienteNome === selectedClient);
 
   const isAdmin = userProfile?.role === 'admin';
+  const pendingUsersCount = isAdmin
+    ? adminUsers.filter((u) => u.access_status === 'pending').length
+    : 0;
 
   return (
     <div className="flex h-[100dvh] bg-[#0B0B0D] text-[#F4F4F5] overflow-hidden font-sans">
@@ -1231,6 +1291,7 @@ export default function App() {
         reportsCount={reports.length}
         unitsCount={units.length}
         templatesCount={templates.length}
+        pendingUsersCount={pendingUsersCount}
         userProfile={userProfile}
         onSignOut={supabaseEnabled ? handleSignOut : null}
         onOpenLegalModal={openLegalRoute}
@@ -1248,6 +1309,7 @@ export default function App() {
           onSelectClient={setSelectedClient}
           onOpenNewOrder={() => setIsNewOrderModalOpen(true)}
           onOpenAdminPanel={() => openProfileModal('admin')}
+          pendingUsersCount={pendingUsersCount}
           onOpenProfile={() => openProfileModal(isAdmin ? 'profile' : 'profile')}
           onOpenMenu={() => setIsMobileMenuOpen(true)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}

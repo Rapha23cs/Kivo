@@ -26,6 +26,7 @@ export default function Sidebar({
   reportsCount = 0,
   unitsCount = 0,
   templatesCount = 0,
+  pendingUsersCount = 0,
   userProfile,
   onSignOut,
   onOpenLegalModal,
@@ -95,6 +96,8 @@ export default function Sidebar({
           label: 'Administração & Conta',
           shortLabel: 'Admin',
           icon: Award,
+          badge: pendingUsersCount > 0 ? pendingUsersCount : null,
+          badgeColor: 'bg-[#221A10] text-[#FBBF24] border-[#F59E0B]/40',
           mobileBar: true
         }
       ]
