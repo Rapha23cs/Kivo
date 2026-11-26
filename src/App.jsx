@@ -14,7 +14,7 @@ import { buildSstChecklist } from './data/sstChecklistData';
 import { getDisciplineMeta } from './data/workflowsConfig';
 import { applyAccentCssVariables } from './utils/themePalette';
 import { AuditService } from './supabase/auditService';
-import { hashPinSha256 } from './utils/securityHelpers';
+import { hashPinSha256, getUserPinSalt } from './utils/securityHelpers';
 import { Lock } from 'lucide-react';
 
 const DashboardOverview = lazy(() => import('./components/dashboard/DashboardOverview'));
@@ -202,10 +202,16 @@ export default function App() {
   const [isScreenLocked, setIsScreenLocked] = useState(false);
   const [unlockPinInput, setUnlockPinInput] = useState('');
   const [unlockPinError, setUnlockPinError] = useState('');
+  const [pinFailedAttempts, setPinFailedAttempts] = useState(0);
+  const [pinCooldownUntil, setPinCooldownUntil] = useState(0);
+  const [pinCooldownSeconds, setPinCooldownSeconds] = useState(0);
 
-  const refreshScreenLockConfig = () => {
+  const refreshScreenLockConfig = (activeUserId = session?.user?.id || userProfile?.userId || '') => {
     try {
-      setHasScreenLockPin(Boolean(localStorage.getItem('kivo_screen_pin_hash')));
+      const savedHash = localStorage.getItem('kivo_screen_pin_hash');
+      const savedUid = localStorage.getItem('kivo_screen_pin_uid') || '';
+      const validForUser = Boolean(savedHash) && (!savedUid || !activeUserId || savedUid === activeUserId);
+      setHasScreenLockPin(validForUser);
       setScreenLockMinutes(Number(localStorage.getItem('kivo_screen_lock_minutes') || '15'));
     } catch {
       // ignora
@@ -498,21 +504,63 @@ export default function App() {
     };
   }, [hasScreenLockPin, screenLockMinutes, isScreenLocked, supabaseEnabled, session, mfaRequired]);
 
+  useEffect(() => {
+    if (!pinCooldownUntil || pinCooldownUntil <= Date.now()) {
+      setPinCooldownSeconds(0);
+      return undefined;
+    }
+    const updateRemaining = () => {
+      const rem = Math.max(0, Math.ceil((pinCooldownUntil - Date.now()) / 1000));
+      setPinCooldownSeconds(rem);
+      if (rem <= 0) {
+        setPinCooldownUntil(0);
+        setUnlockPinError('');
+      }
+    };
+    updateRemaining();
+    const id = setInterval(updateRemaining, 500);
+    return () => clearInterval(id);
+  }, [pinCooldownUntil]);
+
   const handleUnlockScreen = async (e) => {
     e.preventDefault();
     setUnlockPinError('');
+    if (pinCooldownUntil && Date.now() < pinCooldownUntil) {
+      const rem = Math.max(1, Math.ceil((pinCooldownUntil - Date.now()) / 1000));
+      setUnlockPinError(`Muitas tentativas. Aguarde ${rem}s ou encerre a sessão.`);
+      return;
+    }
     try {
       const savedHash = localStorage.getItem('kivo_screen_pin_hash');
       if (!savedHash) {
         setIsScreenLocked(false);
         return;
       }
-      const enteredHash = await hashPinSha256(unlockPinInput);
-      if (enteredHash === savedHash) {
+      const activeUid = session?.user?.id || userProfile?.userId || '';
+      const userSaltedHash = await hashPinSha256(unlockPinInput, getUserPinSalt(activeUid));
+      const legacyHash = activeUid ? await hashPinSha256(unlockPinInput) : '';
+      const matched = userSaltedHash === savedHash || (legacyHash && legacyHash === savedHash);
+
+      if (matched) {
+        if (activeUid && legacyHash === savedHash && userSaltedHash !== savedHash) {
+          localStorage.setItem('kivo_screen_pin_hash', userSaltedHash);
+          localStorage.setItem('kivo_screen_pin_uid', activeUid);
+        }
+        setPinFailedAttempts(0);
+        setPinCooldownUntil(0);
         setIsScreenLocked(false);
         setUnlockPinInput('');
       } else {
-        setUnlockPinError('PIN incorreto.');
+        const nextAttempts = pinFailedAttempts + 1;
+        setPinFailedAttempts(nextAttempts);
+        setUnlockPinInput('');
+        if (nextAttempts >= 5) {
+          setPinCooldownUntil(Date.now() + 30000);
+          setPinFailedAttempts(0);
+          setUnlockPinError('5 tentativas incorretas. Bloqueado por 30s.');
+        } else {
+          setUnlockPinError(`PIN incorreto (${nextAttempts}/5).`);
+        }
       }
     } catch {
       setUnlockPinError('Falha ao validar PIN.');
@@ -578,12 +626,36 @@ export default function App() {
     }
   }, [supabaseEnabled, session, mfaRequired]);
 
+  useEffect(() => {
+    const uid = session?.user?.id || userProfile?.userId || '';
+    if (!uid) return;
+    try {
+      const savedUid = localStorage.getItem('kivo_screen_pin_uid');
+      if (savedUid && savedUid !== uid) {
+        localStorage.removeItem('kivo_screen_pin_hash');
+        localStorage.removeItem('kivo_screen_pin_uid');
+      }
+    } catch {
+      // ignora
+    }
+    refreshScreenLockConfig(uid);
+  }, [session?.user?.id, userProfile?.userId]);
+
   const handleSignOut = async () => {
     const { client } = getSupabaseClient();
     await client?.auth.signOut();
     await DataService.syncSessionUser(null);
     ReportService.clearLocalCache();
     OperationsService.clearLocalCaches();
+    try {
+      localStorage.removeItem('kivo_screen_pin_hash');
+      localStorage.removeItem('kivo_screen_pin_uid');
+    } catch {
+      // ignora
+    }
+    setHasScreenLockPin(false);
+    setPinFailedAttempts(0);
+    setPinCooldownUntil(0);
     setSession(null);
     setMfaRequired(false);
     setIsScreenLocked(false);
@@ -1467,10 +1539,11 @@ export default function App() {
                 inputMode="numeric"
                 autoFocus
                 maxLength={6}
+                disabled={pinCooldownSeconds > 0}
                 value={unlockPinInput}
                 onChange={(e) => setUnlockPinInput(e.target.value.replace(/\D/g, ''))}
                 placeholder="••••"
-                className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-lg tracking-[0.4em] text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+                className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-lg tracking-[0.4em] text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none disabled:opacity-50"
               />
               {unlockPinError && (
                 <p className="text-[11px] text-[#FB7185] mt-1.5">{unlockPinError}</p>
@@ -1478,10 +1551,10 @@ export default function App() {
             </div>
             <button
               type="submit"
-              disabled={!unlockPinInput}
+              disabled={!unlockPinInput || pinCooldownSeconds > 0}
               className="w-full py-2.5 bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold rounded-lg text-xs transition"
             >
-              Desbloquear
+              {pinCooldownSeconds > 0 ? `Aguarde ${pinCooldownSeconds}s...` : 'Desbloquear'}
             </button>
             {supabaseEnabled && (
               <button

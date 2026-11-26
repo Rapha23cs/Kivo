@@ -26,7 +26,7 @@ import { getSupabaseClient } from '../../supabase/supabaseConfig';
 import { AuditService } from '../../supabase/auditService';
 import { DataService, compressImageToDataUrl } from '../../supabase/dataService';
 import { sanitizeMediaUrl } from '../../utils/kivoHelpers';
-import { validateStrongPassword, hashPinSha256 } from '../../utils/securityHelpers';
+import { validateStrongPassword, hashPinSha256, getUserPinSalt } from '../../utils/securityHelpers';
 import { KIVO_ACCENT_PRESETS } from '../../utils/themePalette';
 import { useFeedback } from '../common/FeedbackProvider';
 
@@ -134,10 +134,11 @@ export default function UserProfileModal({
   useEffect(() => {
     if (isOpen && activeTab === 'security') {
       loadMfaFactors();
-      AuditService.listRecent(15).then(setAuditLogs);
+      AuditService.listRecent(isAdmin ? 30 : 15).then(setAuditLogs);
     }
     if (isOpen && activeTab === 'admin' && isAdmin) {
       loadAdminUsers();
+      AuditService.listRecent(30).then(setAuditLogs);
     }
   }, [isOpen, activeTab, isAdmin]);
 
@@ -336,8 +337,14 @@ export default function UserProfileModal({
     }
     try {
       if (clean) {
-        const hash = await hashPinSha256(clean);
+        const uid = userProfile?.userId || '';
+        const hash = await hashPinSha256(clean, getUserPinSalt(uid));
         localStorage.setItem('kivo_screen_pin_hash', hash);
+        if (uid) {
+          localStorage.setItem('kivo_screen_pin_uid', uid);
+        } else {
+          localStorage.removeItem('kivo_screen_pin_uid');
+        }
         setHasScreenPin(true);
         setScreenPinInput('');
       }
@@ -352,6 +359,7 @@ export default function UserProfileModal({
   const handleRemoveScreenPin = () => {
     try {
       localStorage.removeItem('kivo_screen_pin_hash');
+      localStorage.removeItem('kivo_screen_pin_uid');
       setHasScreenPin(false);
       setScreenPinInput('');
       onScreenLockConfigChange?.();
@@ -914,19 +922,31 @@ export default function UserProfileModal({
                         Nenhum evento registrado ainda.
                       </p>
                     ) : (
-                      auditLogs.map((log, i) => (
-                        <div key={log.id || i} className="px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
-                          <div className="min-w-0 truncate">
-                            <span className="font-mono text-[#34D399]">{log.action}</span>
-                            {log.entity_id && (
-                              <span className="text-[#E4E4E7] ml-1.5 font-mono">({log.entity_id})</span>
-                            )}
+                      auditLogs.map((log, i) => {
+                        const actor = isAdmin && log.user_id
+                          ? adminUsers.find((u) => u.user_id === log.user_id)
+                          : null;
+                        const detailLabel = log.metadata?.unidade || log.metadata?.nome || log.metadata?.email || '';
+                        return (
+                          <div key={log.id || i} className="px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+                            <div className="min-w-0 truncate">
+                              <span className="font-mono text-[#34D399]">{log.action}</span>
+                              {log.entity_id && (
+                                <span className="text-[#E4E4E7] ml-1.5 font-mono">({log.entity_id})</span>
+                              )}
+                              {detailLabel && (
+                                <span className="text-[#A1A1AA] ml-1.5">• {detailLabel}</span>
+                              )}
+                              {actor && (
+                                <span className="text-[#71717A] ml-1.5">por {actor.full_name || actor.email}</span>
+                              )}
+                            </div>
+                            <span className="font-mono text-[10px] text-[#71717A] shrink-0">
+                              {log.created_at ? new Date(log.created_at).toLocaleString('pt-BR') : '—'}
+                            </span>
                           </div>
-                          <span className="font-mono text-[10px] text-[#71717A] shrink-0">
-                            {log.created_at ? new Date(log.created_at).toLocaleString('pt-BR') : '—'}
-                          </span>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -1210,6 +1230,58 @@ export default function UserProfileModal({
                           >
                             {u.role === 'admin' ? 'Tornar Auditor' : 'Tornar Admin'}
                           </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Trilha de Auditoria Global do Sistema */}
+              <div className="bg-[#141518] border border-[#232429] rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-[#1F2024] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <History className="w-3.5 h-3.5 text-[#34D399]" />
+                    <span className="font-semibold text-[#E4E4E7] text-xs">
+                      Auditoria Global de Eventos ({auditLogs.length})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => AuditService.listRecent(30).then(setAuditLogs)}
+                    className="text-[11px] text-[#34D399] hover:underline"
+                  >
+                    Atualizar logs
+                  </button>
+                </div>
+                {auditLogs.length === 0 ? (
+                  <p className="p-4 text-[11px] text-[#71717A] text-center">
+                    Nenhum evento registrado ainda.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[#1F2024] max-h-56 overflow-y-auto">
+                    {auditLogs.map((log, i) => {
+                      const actor = log.user_id
+                        ? adminUsers.find((u) => u.user_id === log.user_id)
+                        : null;
+                      const detailLabel = log.metadata?.unidade || log.metadata?.nome || log.metadata?.email || '';
+                      return (
+                        <div key={log.id || i} className="px-4 py-2 flex items-center justify-between gap-2 text-[11px]">
+                          <div className="min-w-0 truncate">
+                            <span className="font-mono text-[#34D399]">{log.action}</span>
+                            {log.entity_id && (
+                              <span className="text-[#E4E4E7] ml-1.5 font-mono">({log.entity_id})</span>
+                            )}
+                            {detailLabel && (
+                              <span className="text-[#A1A1AA] ml-1.5">• {detailLabel}</span>
+                            )}
+                            {actor && (
+                              <span className="text-[#71717A] ml-1.5">por {actor.full_name || actor.email}</span>
+                            )}
+                          </div>
+                          <span className="font-mono text-[10px] text-[#71717A] shrink-0">
+                            {log.created_at ? new Date(log.created_at).toLocaleString('pt-BR') : '—'}
+                          </span>
                         </div>
                       );
                     })}

@@ -54,7 +54,10 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
       setPinRequired({
         codigoRelatorio: res.codigoRelatorio || '',
         unidade: res.unidade || '',
-        invalidPin: Boolean(res.invalidPin)
+        invalidPin: Boolean(res.invalidPin),
+        rateLimited: Boolean(res.rateLimited),
+        retryAfterSeconds: res.retryAfterSeconds || 0,
+        remainingAttempts: typeof res.remainingAttempts === 'number' ? res.remainingAttempts : null
       });
       setReport(null);
       return;
@@ -150,23 +153,34 @@ export default function PublicReportPortal({ token, onBackToHome, onOpenLegal })
             <input
               type="password"
               autoFocus
+              disabled={pinRequired.rateLimited}
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
               placeholder="Digite o PIN informado pelo auditor"
-              className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-sm tracking-widest text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none"
+              className="w-full bg-[#0D0E10] border border-[#27282E] rounded-lg px-3 py-2.5 text-center font-mono text-sm tracking-widest text-[#F4F4F5] focus:border-[#2EB88A] focus:outline-none disabled:opacity-50"
             />
-            {pinRequired.invalidPin && (
-              <p className="text-[11px] text-[#FB7185] mt-1.5 text-center">
-                Código PIN incorreto. Tente novamente.
+            {pinRequired.rateLimited ? (
+              <p className="text-[11px] text-[#FBBF24] mt-1.5 text-center">
+                Muitas tentativas incorretas. Por segurança, tente novamente em{' '}
+                {Math.max(1, Math.ceil((pinRequired.retryAfterSeconds || 300) / 60))} minuto(s).
               </p>
+            ) : (
+              pinRequired.invalidPin && (
+                <p className="text-[11px] text-[#FB7185] mt-1.5 text-center">
+                  Código PIN incorreto.
+                  {pinRequired.remainingAttempts !== null
+                    ? ` Restam ${pinRequired.remainingAttempts} tentativa(s).`
+                    : ' Tente novamente.'}
+                </p>
+              )
             )}
           </div>
           <button
             type="submit"
-            disabled={pinSubmitting || !pinInput.trim()}
+            disabled={pinSubmitting || pinRequired.rateLimited || !pinInput.trim()}
             className="w-full py-2.5 rounded-xl bg-[#2EB88A] hover:bg-[#34D399] disabled:opacity-50 text-[#09090B] font-semibold text-xs transition"
           >
-            {pinSubmitting ? 'Validando...' : 'Desbloquear Laudo'}
+            {pinSubmitting ? 'Validando...' : pinRequired.rateLimited ? 'Temporariamente bloqueado' : 'Desbloquear Laudo'}
           </button>
           <button
             type="button"

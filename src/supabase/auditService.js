@@ -62,7 +62,7 @@ export const AuditService = {
       if (!client) return local.slice(0, limit);
       const { data, error } = await client
         .from('audit_logs')
-        .select('id, action, entity_type, entity_id, metadata, created_at')
+        .select('id, user_id, action, entity_type, entity_id, metadata, created_at')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error || !Array.isArray(data)) {
